@@ -55,7 +55,7 @@ $UCS = @{}
 $UCS_Creds = @{}
 $CCO_Creds = $null
 $CCO_Image_List = $null
-$PSVersion = $version = (Get-Host).Version.Major
+$version = (Get-Host).Version.Major
 $runspaces = $null
 $Silent_Path = './'
 $Silent_FileName = 'UCS_Report_' + (Get-Date -format MM_dd_yyyy_HH_mm_ss) + '.html'
