@@ -2300,7 +2300,7 @@ function Generate_Health_Check
                 $runspace.powershell.dispose()
                 $runspace.Runspace = $null
                 $runspace.powershell = $null
-            } ElseIf ($runspace.Runspace -ne $null) {
+            } ElseIf ($null -ne $runspace.Runspace) {
                 $more = $true
             }
         }
@@ -2311,12 +2311,12 @@ function Generate_Health_Check
         #--- Clean out unused runspace jobs ---#
         $temphash = $runspaces.clone()
         $temphash | Where-Object {
-            $_.runspace -eq $Null
+            $Null -eq $_.runspace
         } | ForEach-Object {
             Write-Verbose ("Removing {0}" -f $_.computer)
             $Runspaces.remove($_)
         }
-        [console]::Title = ("Remaining Runspace Jobs: {0}" -f ((@($runspaces | Where-Object {$_.Runspace -ne $Null}).Count)))
+        [console]::Title = ("Remaining Runspace Jobs: {0}" -f ((@($runspaces | Where-Object {$Null -ne $_.Runspace}).Count)))
     } while ($more)
 
     #--- Update overall progress to complete ---#
