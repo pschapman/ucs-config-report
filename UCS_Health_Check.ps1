@@ -531,8 +531,8 @@ function Generate_Health_Check
         $DomainHash.System.UCSM = (Get-UcsMgmtController -Ucs $handle -Subject system | Get-UcsFirmwareRunning).Version
         $DomainHash.System.HA_Ready = $system.HaReady
         #--- Get Full State and Logical backup configuration ---#
-        $DomainHash.System.Backup_Policy = (Get-UcsMgmtBackupPolicy -Ucs $handle | Select AdminState).AdminState
-        $DomainHash.System.Config_Policy = (Get-UcsMgmtCfgExportPolicy -Ucs $handle | Select AdminState).AdminState
+        $DomainHash.System.Backup_Policy = (Get-UcsMgmtBackupPolicy -Ucs $handle | Select-Object AdminState).AdminState
+        $DomainHash.System.Config_Policy = (Get-UcsMgmtCfgExportPolicy -Ucs $handle | Select-Object AdminState).AdminState
         #--- Get Call Home admin state ---#
         $DomainHash.System.CallHome = (Get-UcsCallHome -Ucs $handle | Select-Object AdminState).AdminState
         #--- Get System and Server power statistics ---#
@@ -631,8 +631,8 @@ function Generate_Health_Check
             $fiHash.FC_Mode = (Get-UcsSanCloud -Ucs $handle).Mode
 
             #--- Get Local storage, VLAN, and Zone utilization numbers ---#
-            $fiHash.Storage = $fi | Get-UcsStorageItem | Select Name,Size,Used
-            $fiHash.VLAN = $fi | Get-UcsSwVlanPortNs | Select Limit,AccessVlanPortCount,BorderVlanPortCount,AllocStatus
+            $fiHash.Storage = $fi | Get-UcsStorageItem | Select-Object Name,Size,Used
+            $fiHash.VLAN = $fi | Get-UcsSwVlanPortNs | Select-Object Limit,AccessVlanPortCount,BorderVlanPortCount,AllocStatus
             $fiHash.Zone = $fi | Get-UcsManagedObject -Classid SwFabricZoneNs | Select-Object Limit,ZoneCount,AllocStatus
 
             #--- Sort Expression to filter port id to be just the numerical port number and sort ascending ---#
@@ -682,7 +682,7 @@ function Generate_Health_Check
             #--- Initialize chassis used slot count to 0 ---#
             $slotCount = 0
             #--- Iterate through all blades within current chassis ---#
-            $chassis | Get-UcsBlade | Select Model,SlotId,AssignedToDn | ForEach-Object {
+            $chassis | Get-UcsBlade | Select-Object Model,SlotId,AssignedToDn | ForEach-Object {
                 #--- Hash variable for storing current blade data ---#
                 $bladeHash = @{}
                 $bladeHash.Model = $_.Model
@@ -700,8 +700,8 @@ function Generate_Health_Check
 
             #--- Get chassis PSU data and redundancy mode ---#
             $chassisHash.Psus = @()
-            $chassisHash.Psus = $chassis | Get-UcsPsu | Sort Id | Select Type,Id,Model,Serial,Dn
-            $chassisHash.Power_Redundancy = ($chassis | Get-UcsComputePsuControl | Select Redundancy).Redundancy
+            $chassisHash.Psus = $chassis | Get-UcsPsu | Sort Id | Select-Object Type,Id,Model,Serial,Dn
+            $chassisHash.Power_Redundancy = ($chassis | Get-UcsComputePsuControl | Select-Object Redundancy).Redundancy
 
             #--- Add chassis to domain hash variable ---#
             $DomainHash.Inventory.Chassis += $chassisHash
@@ -799,7 +799,7 @@ function Generate_Health_Check
             $bladeHash.Status = $blade.OperState
             $bladeHash.Chassis = $blade.ChassisId
             $bladeHash.Slot = $blade.SlotId
-            ($bladeHash.Model,$bladeHash.Model_Description) = $EquipmentManDef | Where-Object {$_.Sku -ieq $($blade.Model)} | Select Name,Description | ForEach-Object {($_.Name -replace "Cisco UCS ", ""),$_.Description}
+            ($bladeHash.Model,$bladeHash.Model_Description) = $EquipmentManDef | Where-Object {$_.Sku -ieq $($blade.Model)} | Select-Object Name,Description | ForEach-Object {($_.Name -replace "Cisco UCS ", ""),$_.Description}
             $bladeHash.Serial = $blade.Serial
             $bladeHash.Uuid = $blade.Uuid
             $bladeHash.UsrLbl = $blade.UsrLbl
@@ -852,7 +852,7 @@ function Generate_Health_Check
             #--- Array variable for storing blade memory data ---#
             $bladeHash.Memory_Array = @()
             #--- Iterage through all memory tied to current server and grab relevant data ---#
-            $memoryArray | Where-Object {$_.Dn -match $blade.Dn} | Select Id,Location,Capacity,Clock | Sort-Object {($_.Id) -as [int]} | ForEach-Object {
+            $memoryArray | Where-Object {$_.Dn -match $blade.Dn} | Select-Object Id,Location,Capacity,Clock | Sort-Object {($_.Id) -as [int]} | ForEach-Object {
                 #--- Hash variable for storing current memory data ---#
                 $memHash = @{}
                 $memHash.Name = "Memory " + $_.Id
@@ -917,7 +917,7 @@ function Generate_Health_Check
             #--- Array variable for storing VIF information for current blade ---#
             $bladeHash.VIFs = @()
             #--- Grab all circuits that match the current blade DN and are active or link-down ---#
-            $circuits = Get-UcsDcxVc -Ucs $handle -Filter "Dn -cmatch $($blade.Dn) -and (OperState -cmatch active -or OperState -cmatch link-down)" | Select Dn,Id,OperBorderPortId,OperBorderSlotId,SwitchId,Vnic,LinkState
+            $circuits = Get-UcsDcxVc -Ucs $handle -Filter "Dn -cmatch $($blade.Dn) -and (OperState -cmatch active -or OperState -cmatch link-down)" | Select-Object Dn,Id,OperBorderPortId,OperBorderSlotId,SwitchId,Vnic,LinkState
             #--- Iterate through all paths of type "mux-fabric" for the current blade ---#
             $paths | Where-Object {$_.Dn -Match $blade.Dn -and $_.CType -match "mux-fabric|switchpc-to-hostpc" -and $_.CType -notmatch "mux-fabric(.*)?[-]"} | ForEach-Object {
                 #--- Store current pipe variable to local variable ---#
@@ -966,7 +966,7 @@ function Generate_Health_Check
                 #--- Array variable for storing virtual circuit data ---#
                 $vifHash.Circuits = @()
                 #--- Iterate through all circuits for the current vif ---#
-                $circuits | Where-Object {$_.Dn -cmatch ($vif.Dn | Select-String -pattern ".*(?<=[/])")[0].Matches.Value} | Select Id,vNic,OperBorderPortId,OperBorderSlotId,LinkState,SwitchId | ForEach-Object {
+                $circuits | Where-Object {$_.Dn -cmatch ($vif.Dn | Select-String -pattern ".*(?<=[/])")[0].Matches.Value} | Select-Object Id,vNic,OperBorderPortId,OperBorderSlotId,LinkState,SwitchId | ForEach-Object {
                     #--- Hash variable for storing current circuit data ---#
                     $vcHash = @{}
                     $vcHash.Name = 'Virtual Circuit ' + $_.Id
@@ -1171,7 +1171,7 @@ function Generate_Health_Check
             $rackHash.Rack_Id = $rack.Id
             $rackHash.Dn = $rack.Dn
             #--- Get Model and Description common names and format the text ---#
-            ($rackHash.Model,$rackHash.Model_Description) = $EquipmentManDef | Where-Object {$_.Sku -ieq $($rack.Model)} | Select Name,Description | ForEach-Object {($_.Name -replace "Cisco UCS ", ""),$_.Description}
+            ($rackHash.Model,$rackHash.Model_Description) = $EquipmentManDef | Where-Object {$_.Sku -ieq $($rack.Model)} | Select-Object Name,Description | ForEach-Object {($_.Name -replace "Cisco UCS ", ""),$_.Description}
             $rackHash.Serial = $rack.Serial
             $rackHash.Service_Profile = $rack.AssignedToDn
             $rackHash.Uuid = $rack.Uuid
@@ -1211,7 +1211,7 @@ function Generate_Health_Check
             #--- Array variable for storing rack memory data ---#
             $rackHash.Memory_Array = @()
             #--- Iterage through all memory tied to current server and grab relevant data ---#
-            $memoryArray | Where-Object Dn -cmatch $rack.Dn | Select Id,Location,Capacity,Clock | Sort-Object {($_.Id) -as [int]} | ForEach-Object {
+            $memoryArray | Where-Object Dn -cmatch $rack.Dn | Select-Object Id,Location,Capacity,Clock | Sort-Object {($_.Id) -as [int]} | ForEach-Object {
                 #--- Hash variable for storing current memory data ---#
                 $memHash = @{}
                 $memHash.Name = "Memory " + $_.Id
@@ -1273,7 +1273,7 @@ function Generate_Health_Check
             #--- Array variable for storing VIF information for current rack ---#
             $rackHash.VIFs = @()
             #--- Grab all circuits that match the current rack DN and are active or link-down ---#
-            $circuits = Get-UcsDcxVc -Ucs $handle -Filter "Dn -cmatch $($rack.Dn) -and (OperState -cmatch active -or OperState -cmatch link-down)" | Select Dn,Id,OperBorderPortId,OperBorderSlotId,SwitchId,Vnic,LinkState
+            $circuits = Get-UcsDcxVc -Ucs $handle -Filter "Dn -cmatch $($rack.Dn) -and (OperState -cmatch active -or OperState -cmatch link-down)" | Select-Object Dn,Id,OperBorderPortId,OperBorderSlotId,SwitchId,Vnic,LinkState
             #--- Iterate through all paths of type "mux-fabric" for the current rack ---#
             $paths | Where-Object {$_.Dn -Match $rack.Dn -and $_.CType -match "mux-fabric|switchpc-to-hostpc" -and $_.CType -notmatch "mux-fabric(.*)?[-]"} | ForEach-Object {
                 #--- Store current pipe variable to local variable ---#
@@ -1301,7 +1301,7 @@ function Generate_Health_Check
                 #--- Array variable for storing virtual circuit data ---#
                 $vifHash.Circuits = @()
                 #--- Iterate through all circuits for the current vif ---#
-                $circuits | Where-Object {$_.Dn -cmatch ($vif.Dn | Select-String -pattern ".*(?<=[/])")[0].Matches.Value} | Select Id,vNic,OperBorderPortId,OperBorderSlotId,LinkState,SwitchId | ForEach-Object {
+                $circuits | Where-Object {$_.Dn -cmatch ($vif.Dn | Select-String -pattern ".*(?<=[/])")[0].Matches.Value} | Select-Object Id,vNic,OperBorderPortId,OperBorderSlotId,LinkState,SwitchId | ForEach-Object {
                     #--- Hash variable for storing current circuit data ---#
                     $vcHash = @{}
                     $vcHash.Name = 'Virtual Circuit ' + $_.Id
@@ -1497,14 +1497,14 @@ function Generate_Health_Check
         $DomainHash.Policies.SystemPolicies.NTP = @()
         $DomainHash.Policies.SystemPolicies.NTP += (Get-UcsNtpServer -Ucs $handle).Name
         #--- Get chassis discovery data for future use ---#
-        $Chassis_Discovery = Get-UcsChassisDiscoveryPolicy -Ucs $handle | Select Action,LinkAggregationPref
+        $Chassis_Discovery = Get-UcsChassisDiscoveryPolicy -Ucs $handle | Select-Object Action,LinkAggregationPref
         $DomainHash.Policies.SystemPolicies.Action = $Chassis_Discovery.Action
         $DomainHash.Policies.SystemPolicies.Grouping = $Chassis_Discovery.LinkAggregationPref
-        $DomainHash.Policies.SystemPolicies.Power = (Get-UcsPowerControlPolicy -Ucs $handle | Select Redundancy).Redundancy
-        $DomainHash.Policies.SystemPolicies.FirmwareAutoSyncAction = (Get-UcsFirmwareAutoSyncPolicy | Select SyncState).SyncState
-        $DomainHash.Policies.SystemPolicies.Maint = (Get-UcsMaintenancePolicy -Name "default" -Ucs $handle | Select UptimeDisr).UptimeDisr
+        $DomainHash.Policies.SystemPolicies.Power = (Get-UcsPowerControlPolicy -Ucs $handle | Select-Object Redundancy).Redundancy
+        $DomainHash.Policies.SystemPolicies.FirmwareAutoSyncAction = (Get-UcsFirmwareAutoSyncPolicy | Select-Object SyncState).SyncState
+        $DomainHash.Policies.SystemPolicies.Maint = (Get-UcsMaintenancePolicy -Name "default" -Ucs $handle | Select-Object UptimeDisr).UptimeDisr
         #$DomainHash.Policies.SystemPolicies.Timezone = (Get-UcsTimezone).Timezone -replace '([(].*[)])', ""
-        $DomainHash.Policies.SystemPolicies.Timezone = (Get-UcsTimezone | Select Timezone).Timezone
+        $DomainHash.Policies.SystemPolicies.Timezone = (Get-UcsTimezone | Select-Object Timezone).Timezone
 
         #--- Maintenance Policies ---#
         $DomainHash.Policies.Maintenance = @()
@@ -1512,7 +1512,7 @@ function Generate_Health_Check
 
         #--- Host Firmware Packages ---#
         $DomainHash.Policies.FW_Packages = @()
-        $DomainHash.Policies.FW_Packages += Get-UcsFirmwareComputeHostPack -Ucs $handle | Select Name,BladeBundleVersion,RackBundleVersion
+        $DomainHash.Policies.FW_Packages += Get-UcsFirmwareComputeHostPack -Ucs $handle | Select-Object Name,BladeBundleVersion,RackBundleVersion
 
         #--- LDAP Policy Data ---#
         $DomainHash.Policies.LDAP_Providers = @()
@@ -1669,7 +1669,7 @@ function Generate_Health_Check
 
         #--- Mgmt IP Allocation ---#
         $DomainHash.Policies.Mgmt_IP_Allocation = @()
-        $parentPool | Get-UcsIpPoolPooled -Filter "Assigned -ieq yes" | Select AssignedToDn,Id,Subnet,DefGw | ForEach-Object {
+        $parentPool | Get-UcsIpPoolPooled -Filter "Assigned -ieq yes" | Select-Object AssignedToDn,Id,Subnet,DefGw | ForEach-Object {
             $allocationHash = @{}
             $allocationHash.Dn = $_.AssignedToDn -replace "/mgmt/*.*", ""
             $allocationHash.IP = $_.Id
@@ -1704,7 +1704,7 @@ function Generate_Health_Check
         #--- Array variable for storing template data ---#
         $templates = @()
         #--- Grab all service profile templates ---#
-        $templates += ($profiles | Where-Object {$_.Type -match "updating[-]template|initial[-]template"} | Select Dn).Dn
+        $templates += ($profiles | Where-Object {$_.Type -match "updating[-]template|initial[-]template"} | Select-Object Dn).Dn
         #--- Add an empty template entry for profiles not bound to a template ---#
         $templates += ""
         #--- Iterate through templates and grab configuration data ---#
@@ -1736,8 +1736,8 @@ function Generate_Health_Check
             $DomainHash.Profiles[$templateId].General.Boot_Policy = $template.OperBootPolicyName
             $DomainHash.Profiles[$templateId].General.PowerState = ($template | Get-UcsServerPower).State
             $DomainHash.Profiles[$templateId].General.MgmtAccessPolicy = $template.ExtIPState
-            $DomainHash.Profiles[$templateId].General.Server_Pool = $template | Get-UcsServerPoolAssignment | Select Name,Qualifier,RestrictMigration
-            $DomainHash.Profiles[$templateId].General.Maintenance_Policy = Get-UcsMaintenancePolicy -Ucs $handle -Filter "Dn -ieq $($template.OperMaintPolicyName)" | Select Name,Dn,Descr,UptimeDisr
+            $DomainHash.Profiles[$templateId].General.Server_Pool = $template | Get-UcsServerPoolAssignment | Select-Object Name,Qualifier,RestrictMigration
+            $DomainHash.Profiles[$templateId].General.Maintenance_Policy = Get-UcsMaintenancePolicy -Ucs $handle -Filter "Dn -ieq $($template.OperMaintPolicyName)" | Select-Object Name,Dn,Descr,UptimeDisr
 
             #--- Template Details - Storage Tab ---#
 
@@ -1750,7 +1750,7 @@ function Generate_Health_Check
             $vnicConn = $template | Get-UcsVnicConnDef
             $DomainHash.Profiles[$templateId].Storage.Nwwn = $fcNode.Addr
             $DomainHash.Profiles[$templateId].Storage.Nwwn_Pool = $fcNode.IdentPoolName
-            $DomainHash.Profiles[$templateId].Storage.Local_Disk_Config = Get-UcsLocalDiskConfigPolicy -Dn $template.OperLocalDiskPolicyName | Select Mode,ProtectConfig,XtraProperty
+            $DomainHash.Profiles[$templateId].Storage.Local_Disk_Config = Get-UcsLocalDiskConfigPolicy -Dn $template.OperLocalDiskPolicyName | Select-Object Mode,ProtectConfig,XtraProperty
             $DomainHash.Profiles[$templateId].Storage.Connectivity_Policy = $vnicConn.SanConnPolicyName
             $DomainHash.Profiles[$templateId].Storage.Connectivity_Instance = $vnicConn.OperSanConnPolicyName
             #--- Array variable for storing HBA data ---#
@@ -1764,7 +1764,7 @@ function Generate_Health_Check
                 $hbaHash.Actual_Order = $_.OperOrder
                 $hbaHash.Desired_Placement = $_.AdminVcon
                 $hbaHash.Actual_Placement = $_.OperVcon
-                $hbaHash.Vsan = ($_ | Get-UcsChild | Select Name).Name
+                $hbaHash.Vsan = ($_ | Get-UcsChild | Select-Object Name).Name
                 $DomainHash.Profiles[$templateId].Storage.Hbas += $hbaHash
             }
 
@@ -1792,7 +1792,7 @@ function Generate_Health_Check
                 #--- Array for storing VLANs ---#
                 $nicHash.Vlans = @()
                 #--- Grab all VLANs ---#
-                $nicHash.Vlans += $_ | Get-UcsChild -ClassId VnicEtherIf | Select OperVnetName,Vnet,DefaultNet | Sort-Object {($_.Vnet) -as [int]}
+                $nicHash.Vlans += $_ | Get-UcsChild -ClassId VnicEtherIf | Select-Object OperVnetName,Vnet,DefaultNet | Sort-Object {($_.Vnet) -as [int]}
                 $DomainHash.Profiles[$templateId].Network.Nics += $nicHash
             }
 
@@ -1853,7 +1853,7 @@ function Generate_Health_Check
                 $profileHash.General.Overall_Status = $sp.operState
                 $profileHash.General.AssignState = $sp.AssignState
                 $profileHash.General.AssocState = $sp.AssocState
-                $profileHash.General.Power_State = ($sp | Get-UcsChild -ClassId LsPower | Select State).State
+                $profileHash.General.Power_State = ($sp | Get-UcsChild -ClassId LsPower | Select-Object State).State
 
                 $profileHash.General.UserLabel = $sp.UsrLbl
                 $profileHash.General.Descr = $sp.Descr
@@ -1884,7 +1884,7 @@ function Generate_Health_Check
                 $vnicConn = $sp | Get-UcsVnicConnDef
                 $profileHash.Storage.Nwwn = $fcNode.Addr
                 $profileHash.Storage.Nwwn_Pool = $fcNode.IdentPoolName
-                $profileHash.Storage.Local_Disk_Config = Get-UcsLocalDiskConfigPolicy -Dn $sp.OperLocalDiskPolicyName | Select Mode,ProtectConfig,XtraProperty
+                $profileHash.Storage.Local_Disk_Config = Get-UcsLocalDiskConfigPolicy -Dn $sp.OperLocalDiskPolicyName | Select-Object Mode,ProtectConfig,XtraProperty
                 $profileHash.Storage.Connectivity_Policy = $vnicConn.SanConnPolicyName
                 $profileHash.Storage.Connectivity_Instance = $vnicConn.OperSanConnPolicyName
                 #--- Array variable for storing HBA configuration data ---#
@@ -1900,7 +1900,7 @@ function Generate_Health_Check
                     $hbaHash.Desired_Placement = $_.AdminVcon
                     $hbaHash.Actual_Placement = $_.OperVcon
                     $hbaHash.EquipmentDn = $_.EquipmentDn
-                    $hbaHash.Vsan = ($_ | Get-UcsChild | Select OperVnetName).OperVnetName
+                    $hbaHash.Vsan = ($_ | Get-UcsChild | Select-Object OperVnetName).OperVnetName
                     $profileHash.Storage.Hbas += $hbaHash
                 }
 
@@ -1925,7 +1925,7 @@ function Generate_Health_Check
                     $nicHash.Control_Policy = $_.NwCtrlPolicyName
                     $nicHash.Qos = $_.OperQosPolicyName
                     $nicHash.Vlans = @()
-                    $nicHash.Vlans += $_ | Get-UcsChild -ClassId VnicEtherIf | Select OperVnetName,Vnet,DefaultNet | Sort-Object {($_.Vnet) -as [int]}
+                    $nicHash.Vlans += $_ | Get-UcsChild -ClassId VnicEtherIf | Select-Object OperVnetName,Vnet,DefaultNet | Sort-Object {($_.Vnet) -as [int]}
                     $profileHash.Network.Nics += $nicHash
                 }
 
@@ -1949,7 +1949,7 @@ function Generate_Health_Check
                 if($profileHash.Assoc_State -eq 'associated')
                 {
                     #--- Get the collection time interval for adapter performance ---#
-                    $interval = (Get-UcsCollectionPolicy -Name "adapter" | Select CollectionInterval).CollectionInterval
+                    $interval = (Get-UcsCollectionPolicy -Name "adapter" | Select-Object CollectionInterval).CollectionInterval
                     #--- Normalize collection interval to seconds ---#
                     Switch -wildcard (($interval -split '[0-9]')[-1])
                     {
@@ -1990,7 +1990,7 @@ function Generate_Health_Check
         #--- Start LAN Configuration ---#
         #--- Get the collection time interval for port performance ---#
         $DomainHash.Collection = @{}
-        $interval = (Get-UcsCollectionPolicy -Name "port" | Select CollectionInterval).CollectionInterval
+        $interval = (Get-UcsCollectionPolicy -Name "port" | Select-Object CollectionInterval).CollectionInterval
         #--- Normalize collection interval to seconds ---#
         Switch -wildcard (($interval -split '[0-9]')[-1])
         {
@@ -2015,8 +2015,8 @@ function Generate_Health_Check
                 $uplinkHash.IfType = $_.IfType
                 $uplinkHash.XcvrType = $_.XcvrType
                 $uplinkHash.Performance = @{}
-                $uplinkHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
-                $uplinkHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $uplinkHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $uplinkHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
                 $uplinkHash.Status = $_.OperState
                 $uplinkHash.State = $_.AdminState
                 $DomainHash.Lan.UplinkPorts += $uplinkHash
@@ -2034,8 +2034,8 @@ function Generate_Health_Check
                 $serverPortHash.IfType = $_.IfType
                 $serverPortHash.XcvrType = $_.XcvrType
                 $serverPortHash.Performance = @{}
-                $serverPortHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
-                $serverPortHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $serverPortHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $serverPortHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
                 $serverPortHash.Status = $_.OperState
                 $serverPortHash.State = $_.AdminState
                 $DomainHash.Lan.ServerPorts += $serverPortHash
@@ -2048,7 +2048,7 @@ function Generate_Health_Check
             $uplinkHash.Name = $_.Rn
             $uplinkHash.Chassis = $_.ChassisId
             $uplinkHash.Fabric_Id = $_.SwitchId
-            $uplinkHash.Members = $_ | Get-UcsFabricServerPortChannelMember | Select EpDn,PeerDn
+            $uplinkHash.Members = $_ | Get-UcsFabricServerPortChannelMember | Select-Object EpDn,PeerDn
             $DomainHash.Lan.FabricPcs += $uplinkHash
         }
         #--- Uplink PortChannels ---#
@@ -2056,7 +2056,7 @@ function Generate_Health_Check
         Get-UcsUplinkPortChannel -Ucs $handle | ForEach-Object {
             $uplinkHash = @{}
             $uplinkHash.Name = $_.Rn
-            $uplinkHash.Members = $_ | Get-UcsUplinkPortChannelMember | Select EpDn,PeerDn
+            $uplinkHash.Members = $_ | Get-UcsUplinkPortChannelMember | Select-Object EpDn,PeerDn
             $DomainHash.Lan.UplinkPcs += $uplinkHash
         }
         #--- Qos Domain Policies ---#
@@ -2072,7 +2072,7 @@ function Generate_Health_Check
             $qosHash = @{}
             $qosHash.Name = $_.Name
             $qosHash.Owner = $_.PolicyOwner
-            ($qoshash.Burst,$qoshash.HostControl,$qoshash.Prio,$qoshash.Rate) = $_ | Get-UcsChild -ClassId EpqosEgress | Select Burst,HostControl,Prio,Rate | ForEach-Object {$_.Burst,$_.HostControl,$_.Prio,$_.Rate}
+            ($qoshash.Burst,$qoshash.HostControl,$qoshash.Prio,$qoshash.Rate) = $_ | Get-UcsChild -ClassId EpqosEgress | Select-Object Burst,HostControl,Prio,Rate | ForEach-Object {$_.Burst,$_.HostControl,$_.Prio,$_.Rate}
             $DomainHash.Lan.Qos.Policies += $qosHash
         }
 
@@ -2082,7 +2082,7 @@ function Generate_Health_Check
 
         #--- Network Control Policies ---#
         $DomainHash.Lan.Control_Policies = @()
-        $DomainHash.Lan.Control_Policies += Get-UcsNetworkControlPolicy -Ucs $handle | Where-Object Dn -ne "fabric/eth-estc/nwctrl-default" | Select Cdp,MacRegisterMode,Name,UplinkFailAction,Descr,Dn,PolicyOwner
+        $DomainHash.Lan.Control_Policies += Get-UcsNetworkControlPolicy -Ucs $handle | Where-Object Dn -ne "fabric/eth-estc/nwctrl-default" | Select-Object Cdp,MacRegisterMode,Name,UplinkFailAction,Descr,Dn,PolicyOwner
 
         #--- Mac Address Pool Definitions ---#
         $DomainHash.Lan.Mac_Pools = @()
@@ -2091,13 +2091,13 @@ function Generate_Health_Check
             $macHash.Name = $_.Name
             $macHash.Assigned = $_.Assigned
             $macHash.Size = $_.Size
-            ($macHash.From,$macHash.To) = $_ | Get-UcsMacMemberBlock | Select From,To | ForEach-Object {$_.From,$_.To}
+            ($macHash.From,$macHash.To) = $_ | Get-UcsMacMemberBlock | Select-Object From,To | ForEach-Object {$_.From,$_.To}
             $DomainHash.Lan.Mac_Pools += $macHash
         }
 
         #--- Mac Address Pool Allocations ---#
         $DomainHash.Lan.Mac_Allocations = @()
-        $DomainHash.Lan.Mac_Allocations += Get-UcsMacPoolPooled | Select Id,Assigned,AssignedToDn
+        $DomainHash.Lan.Mac_Allocations += Get-UcsMacPoolPooled | Select-Object Id,Assigned,AssignedToDn
 
         #--- Ip Pool Definitions ---#
         $DomainHash.Lan.Ip_Pools = @()
@@ -2106,13 +2106,13 @@ function Generate_Health_Check
             $ipHash.Name = $_.Name
             $ipHash.Assigned = $_.Assigned
             $ipHash.Size = $_.Size
-            ($ipHash.From,$ipHash.To,$ipHash.DefGw,$ipHash.Subnet,$ipHash.PrimDns) = $_ | Get-UcsIpPoolBlock | Select From,To,DefGw,PrimDns,Subnet | ForEach-Object {$_.From,$_.To,$_.DefGw,$_.Subnet,$_.PrimDns}
+            ($ipHash.From,$ipHash.To,$ipHash.DefGw,$ipHash.Subnet,$ipHash.PrimDns) = $_ | Get-UcsIpPoolBlock | Select-Object From,To,DefGw,PrimDns,Subnet | ForEach-Object {$_.From,$_.To,$_.DefGw,$_.Subnet,$_.PrimDns}
             $DomainHash.Lan.Ip_Pools += $ipHash
         }
 
         #--- Ip Pool Allocations ---#
         $DomainHash.Lan.Ip_Allocations = @()
-        $DomainHash.Lan.Ip_Allocations += Get-UcsIpPoolPooled | Select AssignedToDn,DefGw,Id,PrimDns,Subnet,Assigned
+        $DomainHash.Lan.Ip_Allocations += Get-UcsIpPoolPooled | Select-Object AssignedToDn,DefGw,Id,PrimDns,Subnet,Assigned
 
         #--- vNic Templates ---#
         $DomainHash.Lan.vNic_Templates = @()
@@ -2140,8 +2140,8 @@ function Generate_Health_Check
                 $uplinkHash.IfType = $_.IfType
                 $uplinkHash.XcvrType = $_.XcvrType
                 $uplinkHash.Performance = @{}
-                $uplinkHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
-                $uplinkHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $uplinkHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $uplinkHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
                 $uplinkHash.Status = $_.OperState
                 $uplinkHash.State = $_.AdminState
                 $DomainHash.San.UplinkFcoePorts += $uplinkHash
@@ -2160,8 +2160,8 @@ function Generate_Health_Check
                 $uplinkHash.XcvrType = $_.XcvrType
                 $uplinkHash.Performance = @{}
                 $stats = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/stats" -and $_.Rn -cmatch "stats"}
-                $uplinkHash.Performance.Rx = $stats | Select BytesRx,PacketsRx,BytesRxDeltaAvg
-                $uplinkHash.Performance.Tx = $stats | Select BytesTx,PacketsTx,BytesTxDeltaAvg
+                $uplinkHash.Performance.Rx = $stats | Select-Object BytesRx,PacketsRx,BytesRxDeltaAvg
+                $uplinkHash.Performance.Tx = $stats | Select-Object BytesTx,PacketsTx,BytesTxDeltaAvg
                 $uplinkHash.Status = $_.OperState
                 $uplinkHash.State = $_.AdminState
                 $DomainHash.San.UplinkFcPorts += $uplinkHash
@@ -2179,8 +2179,8 @@ function Generate_Health_Check
                 $storagePortHash.IfType = $_.IfType
                 $storagePortHash.XcvrType = $_.XcvrType
                 $storagePortHash.Performance = @{}
-                $storagePortHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
-                $storagePortHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $storagePortHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $storagePortHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
                 $storagePortHash.Status = $_.OperState
                 $storagePortHash.State = $_.AdminState
                 $DomainHash.San.StoragePorts += $storagePortHash
@@ -2192,20 +2192,20 @@ function Generate_Health_Check
         Get-UcsFcUplinkPortChannel -Ucs $handle | ForEach-Object {
             $uplinkHash = @{}
             $uplinkHash.Name = $_.Rn
-            $uplinkHash.Members = $_ | Get-UcsUplinkFcPort | Select EpDn,PeerDn
+            $uplinkHash.Members = $_ | Get-UcsUplinkFcPort | Select-Object EpDn,PeerDn
             $DomainHash.San.UplinkPcs += $uplinkHash
         }
         #--- FCoE PC uplinks ---#
         Get-UcsFabricFcoeSanPc -Ucs $handle | ForEach-Object {
             $uplinkHash = @{}
             $uplinkHash.Name = $_.Rn
-            $uplinkHash.Members = $_ | Get-UcsFabricFcoeSanPcEp | Select EpDn
+            $uplinkHash.Members = $_ | Get-UcsFabricFcoeSanPcEp | Select-Object EpDn
             $DomainHash.San.FcoePcs += $uplinkHash
         }
 
         #--- VSANs ---#
         $DomainHash.San.Vsans = @()
-        $DomainHash.San.Vsans += Get-UcsVsan -Ucs $handle | Select FcoeVlan,Id,name,SwitchId,ZoningState,IfRole,IfType,Transport
+        $DomainHash.San.Vsans += Get-UcsVsan -Ucs $handle | Select-Object FcoeVlan,Id,name,SwitchId,ZoningState,IfRole,IfType,Transport
 
         #--- WWN Pools ---#
         $DomainHash.San.Wwn_Pools = @()
@@ -2215,15 +2215,15 @@ function Generate_Health_Check
             $wwnHash.Assigned = $_.Assigned
             $wwnHash.Size = $_.Size
             $wwnHash.Purpose = $_.Purpose
-            ($wwnHash.From,$wwnHash.To) = $_ | Get-UcsWwnMemberBlock | Select From,To | ForEach-Object {$_.From,$_.To}
+            ($wwnHash.From,$wwnHash.To) = $_ | Get-UcsWwnMemberBlock | Select-Object From,To | ForEach-Object {$_.From,$_.To}
             $DomainHash.San.Wwn_Pools += $wwnHash
         }
         #--- WWN Allocations ---#
         $DomainHash.San.Wwn_Allocations = @()
-        $DomainHash.San.Wwn_Allocations += Get-UcsWwnInitiator | Select AssignedToDn,Id,Assigned,Purpose
+        $DomainHash.San.Wwn_Allocations += Get-UcsWwnInitiator | Select-Object AssignedToDn,Id,Assigned,Purpose
 
         #--- vHba Templates ---#
-        $DomainHash.San.vHba_Templates = Get-UcsVhbaTemplate -Ucs $handle | Select Name,TempType
+        $DomainHash.San.vHba_Templates = Get-UcsVhbaTemplate -Ucs $handle | Select-Object Name,TempType
 
         #--- End San Configuration ---#
 
