@@ -689,7 +689,7 @@ function Generate_Health_Check
                 $bladeHash.SlotId = $_.SlotId
                 $bladeHash.Service_Profile = $_.AssignedToDn
                 #--- Get width of blade and convert to slot count ---#
-                $bladeHash.Width = [math]::floor((($EquipmentPhysicalDef | Where-Object {$_.Dn -ilike "*$($_.Model)*"}).Width)/8)
+                $bladeHash.Width = [math]::floor((($EquipmentPhysicalDef | Where-Object {$_.Dn -ilike "*$($bladeHash.Model)*"}).Width)/8)
                 #--- Increment used slot count by current blade width ---#
                 $slotCount += $bladeHash.Width
                 $chassisHash.Blades += $bladeHash
