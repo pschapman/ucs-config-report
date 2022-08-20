@@ -598,7 +598,7 @@ function Generate_Health_Check
                 $ports_used_total = 0
                 $ports_used | ForEach-Object { $ports_used_total += $_ }
                 $fiHash.Ports_Used = $ports_used_total
-                Remove-Variable $ports_used_total
+                Remove-Variable ports_used_total
             } else {
                 $fiHash.Ports_Used = $ports_used
             }
@@ -607,23 +607,23 @@ function Generate_Health_Check
                 $ports_used_sub_total = 0
                 $ports_used_sub | ForEach-Object { $ports_used_sub_total += $_ }
                 $fiHash.Ports_Used += $ports_used_sub_total
-                Remove-Variable $ports_used_sub_total
+                Remove-Variable ports_used_sub_total
             } else {
                 $fiHash.Ports_Used += $ports_used_sub
             }
-            Remove-Variable $ports_used_sub
-            Remove-Variable $ports_used
+            Remove-Variable ports_used_sub
+            Remove-Variable ports_used
             $ports_licensed = ($ucsLicense | Select-Object AbsQuant).AbsQuant
             if ($ports_licensed -is [system.array]) {
                 $ports_licensed_total = 0
                 $ports_licensed | ForEach-Object { $ports_licensed_total += $_ }
                 $fiHash.Ports_Licensed = $ports_licensed_total
-                Remove-Variable $ports_licensed_total
+                Remove-Variable ports_licensed_total
             } else {
                 $fiHash.Ports_Licensed = $ports_licensed
             }
-            Remove-Variable $ports_licensed
-            Remove-Variable $ports_used
+            Remove-Variable ports_licensed
+            Remove-Variable ports_used
 
 
             #--- Get Ethernet and FC Switching mode of FI ---#
