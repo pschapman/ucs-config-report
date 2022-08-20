@@ -183,7 +183,7 @@ function Connect_Ucs()
                 }
             }
         }
-        sleep(1)
+        Start-Sleep(1)
     }
     #--- Connect to a single UCS domain through an interactive prompt ---#
     else
@@ -231,7 +231,7 @@ function Connect_Ucs()
                 $script:UCS_Creds[$domain.Handle.Ucs] = @{}
                 $script:UCS_Creds[$domain.Handle.Ucs].VIP = $domain.VIP
                 $script:UCS_Creds[$domain.Handle.Ucs].Creds = $domain.Creds
-                sleep(2)
+                Start-Sleep(2)
                 break
             }
         }
