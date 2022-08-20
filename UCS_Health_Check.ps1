@@ -2478,7 +2478,7 @@ function Check_Modules
             [System.Windows.Forms.MessageBoxIcon]::Exclamation)
         if($ans -eq "Yes")
         {
-         start 'http://software.cisco.com/download/type.html?mdfid=283850978&flowid=25021'
+         Start-Process 'http://software.cisco.com/download/type.html?mdfid=283850978&flowid=25021'
         }
         exit
     }
@@ -2514,7 +2514,7 @@ function Check_PS_Version
             [System.Windows.Forms.MessageBoxIcon]::Exclamation)
         if($ans -eq "Yes")
         {
-         start 'http://www.microsoft.com/en-us/download/details.aspx?id=34595'
+         Start-Process 'http://www.microsoft.com/en-us/download/details.aspx?id=34595'
         }
         exit
     }
