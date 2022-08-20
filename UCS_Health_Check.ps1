@@ -136,7 +136,7 @@ function Connect_Ucs()
     {
         Clear-Host
         #--- Grab each line from the cache file, remove all white space, and pass to a foreach loop ---#
-        Get-Content "$((Get-Location).Path)\ucs_cache.ucs" | ? {$_.trim() -ne ""} | % {
+        Get-Content "$((Get-Location).Path)\ucs_cache.ucs" | Where-Object {$_.trim() -ne ""} | % {
 
             #--- Split credential data - each line consists of UCS VIP, username, hashed password ---#
             $credData = $_.Split(",")
@@ -496,11 +496,11 @@ function Generate_Health_Check
 
         #--- Set Job Progress to 0 and connect to the UCS domain passed ---#
         $Process_Hash.Progress[$domain] = 0;
-        if(@(Get-Module -ListAvailable | ? {$_.Name -eq "CiscoUcsPs"}).Count -and (Get-Module | where {$_.Name -eq "CiscoUcsPS"}).Count -lt 1)
+        if(@(Get-Module -ListAvailable | Where-Object {$_.Name -eq "CiscoUcsPs"}).Count -and (Get-Module | Where-Object {$_.Name -eq "CiscoUcsPS"}).Count -lt 1)
         {
             Import-Module CiscoUcsPs -ErrorAction Stop
         }
-        if(@(Get-Module -ListAvailable | ? {$_.Name -eq "Cisco.UCSManager"}).Count -and (Get-Module | where {$_.Name -eq "Cisco.UCSManager"}).Count -lt 1)
+        if(@(Get-Module -ListAvailable | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -and (Get-Module | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -lt 1)
         {
             Import-Module Cisco.UCSManager -ErrorAction Stop
         }
@@ -579,7 +579,7 @@ function Generate_Health_Check
             }
 
             #--- Get the common name of the fi from the manufacturing definition and format the text ---#
-            $fiModel = ($EquipmentManDef | ?  {$_.Sku -cmatch $($fi.Model)} | Select-Object Name).Name -replace "Cisco UCS ", ""
+            $fiModel = ($EquipmentManDef | Where-Object  {$_.Sku -cmatch $($fi.Model)} | Select-Object Name).Name -replace "Cisco UCS ", ""
             if($fiModel -is [array]) { $fiHash.Model = $fiModel.Item(0) -replace "Cisco UCS ", "" }
             else { $fiHash.Model = $fiModel -replace "Cisco UCS ", "" }
 
@@ -587,8 +587,8 @@ function Generate_Health_Check
             $fiHash.Serial = $fi.Serial
             #--- Get FI System and Kernel FW versions ---#
             ${fiBoot} = Get-UcsMgmtController -Ucs $handle -Dn "$($fi.Dn)/mgmt" | Get-ucsfirmwarebootdefinition | Get-UcsFirmwareBootUnit -Filter 'Type -ieq system -or Type -ieq kernel' | Select-Object Type,Version
-            $fiHash.System = (${fiBoot} | where {$_.Type -eq "system"}).Version
-            $fiHash.Kernel = (${fiBoot} | where {$_.Type -eq "kernel"}).Version
+            $fiHash.System = (${fiBoot} | Where-Object {$_.Type -eq "system"}).Version
+            $fiHash.Kernel = (${fiBoot} | Where-Object {$_.Type -eq "kernel"}).Version
 
             #--- Get out of band management IP and Port licensing information ---#
             $fiHash.IP = $fi.OobIfIp
@@ -689,7 +689,7 @@ function Generate_Health_Check
                 $bladeHash.SlotId = $_.SlotId
                 $bladeHash.Service_Profile = $_.AssignedToDn
                 #--- Get width of blade and convert to slot count ---#
-                $bladeHash.Width = [math]::floor((($EquipmentPhysicalDef | ? {$_.Dn -ilike "*$($_.Model)*"}).Width)/8)
+                $bladeHash.Width = [math]::floor((($EquipmentPhysicalDef | Where-Object {$_.Dn -ilike "*$($_.Model)*"}).Width)/8)
                 #--- Increment used slot count by current blade width ---#
                 $slotCount += $bladeHash.Width
                 $chassisHash.Blades += $bladeHash
@@ -728,7 +728,7 @@ function Generate_Health_Check
             $iomHash.Fabric_Id = $iom.SwitchId
 
             #--- Get common name of IOM model and format for viewing ---#
-            $iomHash.Model = ($EquipmentManDef | ? {$_.Sku -cmatch $($iom.Model)}).Name -replace "Cisco UCS ", ""
+            $iomHash.Model = ($EquipmentManDef | Where-Object {$_.Sku -cmatch $($iom.Model)}).Name -replace "Cisco UCS ", ""
             $iomHash.Serial = $iom.Serial
 
             #--- Get the IOM uplink port channel name if configured ---#
@@ -742,7 +742,7 @@ function Generate_Health_Check
             $iomHash.FabricPorts = @()
 
             #--- Iterate through all fabric ports tied to the current IOM ---#
-            $FabricPorts | ? {$_.ChassisId -eq "$($iomHash.Chassis)" -and $_.SwitchId -eq "$($iomHash.Fabric_Id)"} | Select-Object SlotId,PortId,OperState,EpDn,PeerSlotId,PeerPortId,SwitchId,Ack,PeerDn | % {
+            $FabricPorts | Where-Object {$_.ChassisId -eq "$($iomHash.Chassis)" -and $_.SwitchId -eq "$($iomHash.Fabric_Id)"} | Select-Object SlotId,PortId,OperState,EpDn,PeerSlotId,PeerPortId,SwitchId,Ack,PeerDn | % {
                 #--- Hash variable for storing current fabric port data ---#
                 $portHash = @{}
                 $portHash.Name = 'Fabric Port ' + $_.SlotId + '/' + $_.PortId
@@ -760,7 +760,7 @@ function Generate_Health_Check
             $iomHash.BackplanePorts = @()
 
             #--- Iterate through all backplane ports tied to the current IOM ---#
-            $BackplanePorts | ? {$_.ChassisId -eq "$($iomHash.Chassis)" -and $_.SwitchId -eq "$($iomHash.Fabric_Id)"} | Sort-Object {($_.SlotId) -as [int]},{($_.PortId) -as [int]} | Select-Object SlotId,PortId,OperState,EpDn,SwitchId,PeerDn | % {
+            $BackplanePorts | Where-Object {$_.ChassisId -eq "$($iomHash.Chassis)" -and $_.SwitchId -eq "$($iomHash.Fabric_Id)"} | Sort-Object {($_.SlotId) -as [int]},{($_.PortId) -as [int]} | Select-Object SlotId,PortId,OperState,EpDn,SwitchId,PeerDn | % {
                 #--- Hash variable for storing current backplane port data ---#
                 $portHash = @{}
                 $portHash.Name = 'Backplane Port ' + $_.SlotId + '/' + $_.PortId
@@ -799,7 +799,7 @@ function Generate_Health_Check
             $bladeHash.Status = $blade.OperState
             $bladeHash.Chassis = $blade.ChassisId
             $bladeHash.Slot = $blade.SlotId
-            ($bladeHash.Model,$bladeHash.Model_Description) = $EquipmentManDef | ? {$_.Sku -ieq $($blade.Model)} | Select Name,Description | % {($_.Name -replace "Cisco UCS ", ""),$_.Description}
+            ($bladeHash.Model,$bladeHash.Model_Description) = $EquipmentManDef | Where-Object {$_.Sku -ieq $($blade.Model)} | Select Name,Description | % {($_.Name -replace "Cisco UCS ", ""),$_.Description}
             $bladeHash.Serial = $blade.Serial
             $bladeHash.Uuid = $blade.Uuid
             $bladeHash.UsrLbl = $blade.UsrLbl
@@ -812,10 +812,10 @@ function Generate_Health_Check
                 $bladeHash.Service_Profile = "Unassociated"
             }
             #--- Get blade child object for future iteration ---#
-            $childTargets = $blade | Get-UcsChild | where {$_.Rn -ieq "bios" -or $_.Rn -ieq "mgmt" -or $_.Rn -ieq "board"} | get-ucschild
+            $childTargets = $blade | Get-UcsChild | Where-Object {$_.Rn -ieq "bios" -or $_.Rn -ieq "mgmt" -or $_.Rn -ieq "board"} | get-ucschild
 
             #--- Get blade CPU data ---#
-            $cpu = ($childTargets | where {$_.Rn -match "cpu" -and $_.Model -ne ""} | Select-Object -first 1).Model
+            $cpu = ($childTargets | Where-Object {$_.Rn -match "cpu" -and $_.Model -ne ""} | Select-Object -first 1).Model
             #--- Get CPU common name and format text ---#
             $bladeHash.CPU_Model = '(' + $blade.NumOfCpus + ') ' + ($cpu.Substring(([regex]::match($cpu,'CPU ').Index) + ([regex]::match($cpu,'CPU ').Length))).Replace(" ","")
             $bladeHash.CPU_Cores = $blade.NumOfCores
@@ -823,9 +823,9 @@ function Generate_Health_Check
             #--- Format available memory in GB ---#
             $bladeHash.Memory = $blade.AvailableMemory/1024
             $bladeHash.Memory_Speed = $blade.MemorySpeed
-            $bladeHash.BIOS = (($childTargets | where {$_.Type -eq "blade-bios"}).Version -replace ('(?!(.*[.]){2}).*',"")).TrimEnd('.')
-            $bladeHash.CIMC = ($childTargets | where {$_.Type -eq "blade-controller" -and $_.Deployment -ieq "system"}).Version
-            $bladeHash.Board_Controller = ($childTargets | where {$_.Type -eq "board-controller"}).Version
+            $bladeHash.BIOS = (($childTargets | Where-Object {$_.Type -eq "blade-bios"}).Version -replace ('(?!(.*[.]){2}).*',"")).TrimEnd('.')
+            $bladeHash.CIMC = ($childTargets | Where-Object {$_.Type -eq "blade-controller" -and $_.Deployment -ieq "system"}).Version
+            $bladeHash.Board_Controller = ($childTargets | Where-Object {$_.Type -eq "board-controller"}).Version
 
             #--- Set Board Controller model to N/A if not present ---#
             if(!($bladeHash.Board_Controller))
@@ -840,7 +840,7 @@ function Generate_Health_Check
                 #--- Hash variable for storing current adapter data ---#
                 $adapterHash = @{}
                 #--- Get common name of adapter and format string ---#
-                $adapterHash.Model = ($EquipmentManDef | ? {$_.Sku -ieq $($_.Model)}).Name -replace "Cisco UCS ", ""
+                $adapterHash.Model = ($EquipmentManDef | Where-Object {$_.Sku -ieq $($_.Model)}).Name -replace "Cisco UCS ", ""
                 $adapterHash.Name = 'Adaptor-' + $_.Id
                 $adapterHash.Slot = $_.Id
                 $adapterHash.Fw = ($_ | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
@@ -852,7 +852,7 @@ function Generate_Health_Check
             #--- Array variable for storing blade memory data ---#
             $bladeHash.Memory_Array = @()
             #--- Iterage through all memory tied to current server and grab relevant data ---#
-            $memoryArray | ? {$_.Dn -match $blade.Dn} | Select Id,Location,Capacity,Clock | Sort-Object {($_.Id) -as [int]} | % {
+            $memoryArray | Where-Object {$_.Dn -match $blade.Dn} | Select Id,Location,Capacity,Clock | Sort-Object {($_.Id) -as [int]} | % {
                 #--- Hash variable for storing current memory data ---#
                 $memHash = @{}
                 $memHash.Name = "Memory " + $_.Id
@@ -884,7 +884,7 @@ function Generate_Health_Check
                     #--- Hash variable for storing current disk data ---#
                     $diskHash = @{}
                     #--- Get common name of disk model and format text ---#
-                    $equipmentDef = $EquipmentManDef | ? {$_.OemPartNumber -ieq $($disk.Model)}
+                    $equipmentDef = $EquipmentManDef | Where-Object {$_.OemPartNumber -ieq $($disk.Model)}
                     #--- Get detailed disk capability data ---#
                     $capabilities = Get-UcsEquipmentLocalDiskDef -Ucs $handle -Filter "Dn -cmatch $($disk.Model)"
                     $diskHash.Id = $disk.Id
@@ -919,7 +919,7 @@ function Generate_Health_Check
             #--- Grab all circuits that match the current blade DN and are active or link-down ---#
             $circuits = Get-UcsDcxVc -Ucs $handle -Filter "Dn -cmatch $($blade.Dn) -and (OperState -cmatch active -or OperState -cmatch link-down)" | Select Dn,Id,OperBorderPortId,OperBorderSlotId,SwitchId,Vnic,LinkState
             #--- Iterate through all paths of type "mux-fabric" for the current blade ---#
-            $paths | ? {$_.Dn -Match $blade.Dn -and $_.CType -match "mux-fabric|switchpc-to-hostpc" -and $_.CType -notmatch "mux-fabric(.*)?[-]"} | % {
+            $paths | Where-Object {$_.Dn -Match $blade.Dn -and $_.CType -match "mux-fabric|switchpc-to-hostpc" -and $_.CType -notmatch "mux-fabric(.*)?[-]"} | % {
                 #--- Store current pipe variable to local variable ---#
                 $vif = $_
                 #--- Hash variable for storing current VIF data ---#
@@ -929,7 +929,7 @@ function Generate_Health_Check
                 $vifHash.Name = "Path " + $_.SwitchId + '/' + ($_.Dn | Select-String -pattern "(?<=path[-]).*(?=[/])")[0].Matches.Value
 
                 #--- Gets peer port information filtered to the current path for adapter and fex host port ---#
-                $vifPeers = $paths | ? {$_.EpDn -match ($vif.EpDn | Select-String -pattern ".*(?=(.*[/]){2})").Matches.Value -and $_.Dn -match ($vif.Dn | Select-String -pattern ".*(?=(.*[/]){3})").Matches.Value -and $_.Dn -ne $vif.Dn}
+                $vifPeers = $paths | Where-Object {$_.EpDn -match ($vif.EpDn | Select-String -pattern ".*(?=(.*[/]){2})").Matches.Value -and $_.Dn -match ($vif.Dn | Select-String -pattern ".*(?=(.*[/]){3})").Matches.Value -and $_.Dn -ne $vif.Dn}
                 #--- If Adapter PortId is greater than 1000 then format string as a port channel ---#
                 if($vifPeers[1].PeerPortId -gt 1000)
                 {
@@ -966,7 +966,7 @@ function Generate_Health_Check
                 #--- Array variable for storing virtual circuit data ---#
                 $vifHash.Circuits = @()
                 #--- Iterate through all circuits for the current vif ---#
-                $circuits | ? {$_.Dn -cmatch ($vif.Dn | Select-String -pattern ".*(?<=[/])")[0].Matches.Value} | Select Id,vNic,OperBorderPortId,OperBorderSlotId,LinkState,SwitchId | % {
+                $circuits | Where-Object {$_.Dn -cmatch ($vif.Dn | Select-String -pattern ".*(?<=[/])")[0].Matches.Value} | Select Id,vNic,OperBorderPortId,OperBorderSlotId,LinkState,SwitchId | % {
                     #--- Hash variable for storing current circuit data ---#
                     $vcHash = @{}
                     $vcHash.Name = 'Virtual Circuit ' + $_.Id
@@ -1171,7 +1171,7 @@ function Generate_Health_Check
             $rackHash.Rack_Id = $rack.Id
             $rackHash.Dn = $rack.Dn
             #--- Get Model and Description common names and format the text ---#
-            ($rackHash.Model,$rackHash.Model_Description) = $EquipmentManDef | ? {$_.Sku -ieq $($rack.Model)} | Select Name,Description | % {($_.Name -replace "Cisco UCS ", ""),$_.Description}
+            ($rackHash.Model,$rackHash.Model_Description) = $EquipmentManDef | Where-Object {$_.Sku -ieq $($rack.Model)} | Select Name,Description | % {($_.Name -replace "Cisco UCS ", ""),$_.Description}
             $rackHash.Serial = $rack.Serial
             $rackHash.Service_Profile = $rack.AssignedToDn
             $rackHash.Uuid = $rack.Uuid
@@ -1183,9 +1183,9 @@ function Generate_Health_Check
                 $rackHash.Service_Profile = "Unassociated"
             }
             #--- Get child objects for pulling detailed information
-            $childTargets = $rack | Get-UcsChild | where {$_.Rn -ieq "bios" -or $_.Rn -ieq "mgmt" -or $_.Rn -ieq "board"} | get-ucschild
+            $childTargets = $rack | Get-UcsChild | Where-Object {$_.Rn -ieq "bios" -or $_.Rn -ieq "mgmt" -or $_.Rn -ieq "board"} | get-ucschild
             #--- Get rack CPU data ---#
-            $cpu = ($childTargets | where {$_.Rn -match "cpu" -and $_.Model -ne ""} | Select-Object -first 1).Model
+            $cpu = ($childTargets | Where-Object {$_.Rn -match "cpu" -and $_.Model -ne ""} | Select-Object -first 1).Model
             #--- Get CPU common name and format text ---#
             $rackHash.CPU = '(' + $rack.NumOfCpus + ')' + ($cpu.Substring(([regex]::match($cpu,'CPU ').Index) + ([regex]::match($cpu,'CPU ').Length))).Replace(" ","")
             $rackHash.CPU_Cores = $rack.NumOfCores
@@ -1193,8 +1193,8 @@ function Generate_Health_Check
             #--- Format available memory in GB ---#
             $rackHash.Memory = $rack.AvailableMemory/1024
             $rackHash.Memory_Speed = $rack.MemorySpeed
-            $rackHash.BIOS = (($childTargets | where {$_.Type -eq "blade-bios"}).Version -replace ('(?!(.*[.]){2}).*',"")).TrimEnd('.')
-            $rackHash.CIMC = ($childTargets | where {$_.Type -eq "blade-controller" -and $_.Deployment -ieq "system"}).Version
+            $rackHash.BIOS = (($childTargets | Where-Object {$_.Type -eq "blade-bios"}).Version -replace ('(?!(.*[.]){2}).*',"")).TrimEnd('.')
+            $rackHash.CIMC = ($childTargets | Where-Object {$_.Type -eq "blade-controller" -and $_.Deployment -ieq "system"}).Version
             #--- Iterate through each server adapter and grab detailed information ---#
             foreach (${adapter} in ($rack | Get-UcsAdaptorUnit))
             {
@@ -1202,7 +1202,7 @@ function Generate_Health_Check
                 $adapterHash.Rack_Id = $rack.Id
                 $adapterHash.Slot = ${adapter}.PciSlot
                 #--- Get common name of adapter model and format text ---#
-                $adapterHash.Model = ($EquipmentManDef | ? {$_.Sku -cmatch $(${adapter}.Model)}).Name -replace "Cisco UCS ", ""
+                $adapterHash.Model = ($EquipmentManDef | Where-Object {$_.Sku -cmatch $(${adapter}.Model)}).Name -replace "Cisco UCS ", ""
                 $adapterHash.Serial = ${adapter}.Serial
                 $adapterHash.Running_FW = (${adapter} | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
                 #--- Add adapter data to Rackmount_Adapters array variable ---#
@@ -1211,7 +1211,7 @@ function Generate_Health_Check
             #--- Array variable for storing rack memory data ---#
             $rackHash.Memory_Array = @()
             #--- Iterage through all memory tied to current server and grab relevant data ---#
-            $memoryArray | ? Dn -cmatch $rack.Dn | Select Id,Location,Capacity,Clock | Sort-Object {($_.Id) -as [int]} | % {
+            $memoryArray | Where-Object Dn -cmatch $rack.Dn | Select Id,Location,Capacity,Clock | Sort-Object {($_.Id) -as [int]} | % {
                 #--- Hash variable for storing current memory data ---#
                 $memHash = @{}
                 $memHash.Name = "Memory " + $_.Id
@@ -1241,7 +1241,7 @@ function Generate_Health_Check
                     #--- Hash variable for storing current disk data ---#
                     $diskHash = @{}
                     #--- Get common name of disk model and format text ---#
-                    $equipmentDef = $EquipmentManDef | ? {$_.OemPartNumber -ieq $($disk.Model)}
+                    $equipmentDef = $EquipmentManDef | Where-Object {$_.OemPartNumber -ieq $($disk.Model)}
                     #--- Get detailed disk capability data ---#
                     $capabilities = Get-UcsEquipmentLocalDiskDef -Ucs $handle -Filter "Dn -cmatch $($disk.Model)"
                     $diskHash.Id = $disk.Id
@@ -1275,7 +1275,7 @@ function Generate_Health_Check
             #--- Grab all circuits that match the current rack DN and are active or link-down ---#
             $circuits = Get-UcsDcxVc -Ucs $handle -Filter "Dn -cmatch $($rack.Dn) -and (OperState -cmatch active -or OperState -cmatch link-down)" | Select Dn,Id,OperBorderPortId,OperBorderSlotId,SwitchId,Vnic,LinkState
             #--- Iterate through all paths of type "mux-fabric" for the current rack ---#
-            $paths | ? {$_.Dn -Match $rack.Dn -and $_.CType -match "mux-fabric|switchpc-to-hostpc" -and $_.CType -notmatch "mux-fabric(.*)?[-]"} | % {
+            $paths | Where-Object {$_.Dn -Match $rack.Dn -and $_.CType -match "mux-fabric|switchpc-to-hostpc" -and $_.CType -notmatch "mux-fabric(.*)?[-]"} | % {
                 #--- Store current pipe variable to local variable ---#
                 $vif = $_
                 #--- Hash variable for storing current VIF data ---#
@@ -1283,7 +1283,7 @@ function Generate_Health_Check
                 #--- The name of the current Path formatted to match the presentation in UCSM ---#
                 $vifHash.Name = "Path " + $_.SwitchId + '/' + ($_.Dn | Select-String -pattern "(?<=path[-]).*(?=[/])")[0].Matches.Value
                 #--- Gets peer port information filtered to the current path for adapter and fex host port ---#
-                $vifPeers = $paths | ? {$_.EpDn -match ($vif.EpDn | Select-String -pattern ".*(?=(.*[/]){2})").Matches.Value -and $_.Dn -match ($vif.Dn | Select-String -pattern ".*(?=(.*[/]){3})").Matches.Value -and $_.Dn -ne $vif.Dn}
+                $vifPeers = $paths | Where-Object {$_.EpDn -match ($vif.EpDn | Select-String -pattern ".*(?=(.*[/]){2})").Matches.Value -and $_.Dn -match ($vif.Dn | Select-String -pattern ".*(?=(.*[/]){3})").Matches.Value -and $_.Dn -ne $vif.Dn}
 
                 if ($vifPeers.length -eq 1) {
                     $vifHash.Adapter_Port = "$($vifPeers[0].PeerSlotId)/$($vifPeers[0].PeerPortId)"
@@ -1301,7 +1301,7 @@ function Generate_Health_Check
                 #--- Array variable for storing virtual circuit data ---#
                 $vifHash.Circuits = @()
                 #--- Iterate through all circuits for the current vif ---#
-                $circuits | ? {$_.Dn -cmatch ($vif.Dn | Select-String -pattern ".*(?<=[/])")[0].Matches.Value} | Select Id,vNic,OperBorderPortId,OperBorderSlotId,LinkState,SwitchId | % {
+                $circuits | Where-Object {$_.Dn -cmatch ($vif.Dn | Select-String -pattern ".*(?<=[/])")[0].Matches.Value} | Select Id,vNic,OperBorderPortId,OperBorderSlotId,LinkState,SwitchId | % {
                     #--- Hash variable for storing current circuit data ---#
                     $vcHash = @{}
                     $vcHash.Name = 'Virtual Circuit ' + $_.Id
@@ -1704,7 +1704,7 @@ function Generate_Health_Check
         #--- Array variable for storing template data ---#
         $templates = @()
         #--- Grab all service profile templates ---#
-        $templates += ($profiles | ? {$_.Type -match "updating[-]template|initial[-]template"} | Select Dn).Dn
+        $templates += ($profiles | Where-Object {$_.Type -match "updating[-]template|initial[-]template"} | Select Dn).Dn
         #--- Add an empty template entry for profiles not bound to a template ---#
         $templates += ""
         #--- Iterate through templates and grab configuration data ---#
@@ -1714,7 +1714,7 @@ function Generate_Health_Check
             $templateId = $templateDn #-replace "/",":"
             #--- Unchanged copy of the current template name used later in the script ---#
             #--- Find the profile template that matches the current name ---#
-            $template = $profiles | ? {$_.Dn -eq "$templateDn"}
+            $template = $profiles | Where-Object {$_.Dn -eq "$templateDn"}
             $templateName = If ($template) { $template.Name } Else {"Unbound"}
             #--- Hash variable to store data for current templateName ---#
             $DomainHash.Profiles[$templateId] = @{}
@@ -1829,7 +1829,7 @@ function Generate_Health_Check
             #--- Array variable for storing profiles tied to current template name ---#
             $DomainHash.Profiles[$templateId].Profiles = @()
             #--- Iterate through all profiles tied to the current template name ---#
-            $profiles | ? {$_.OperSrcTemplName -ieq "$templateDn" -and $_.Type -ieq "instance"} | % {
+            $profiles | Where-Object {$_.OperSrcTemplName -ieq "$templateDn" -and $_.Type -ieq "instance"} | % {
                 #--- Store current pipe variable to local variable ---#
                 $sp = $_
                 #--- Hash variable for storing current profile configuration data ---#
@@ -1961,12 +1961,12 @@ function Generate_Health_Check
                     #--- Iterate through each vHBA and grab performance data ---#
                     $profileHash.Storage.Hbas | % {
                         $hba = $_
-                        $profileHash.Performance.vHbas[$hba.Name] = $statistics | ? {$_.Dn -cmatch $hba.EquipmentDn -and $_.Rn -ieq "vnic-stats"} | Select-Object BytesRx,BytesRxDeltaAvg,BytesTx,BytesTxDeltaAvg,PacketsRx,PacketsRxDeltaAvg,PacketsTx,PacketsTxDeltaAvg
+                        $profileHash.Performance.vHbas[$hba.Name] = $statistics | Where-Object {$_.Dn -cmatch $hba.EquipmentDn -and $_.Rn -ieq "vnic-stats"} | Select-Object BytesRx,BytesRxDeltaAvg,BytesTx,BytesTxDeltaAvg,PacketsRx,PacketsRxDeltaAvg,PacketsTx,PacketsTxDeltaAvg
                     }
                     #--- Iterate through each vNIC and grab performance data ---#
                     $profileHash.Network.Nics | % {
                         $nic = $_
-                        $profileHash.Performance.vNics[$nic.Name] = $statistics | ? {$_.Dn -cmatch $nic.EquipmentDn -and $_.Rn -ieq "vnic-stats"} | Select-Object BytesRx,BytesRxDeltaAvg,BytesTx,BytesTxDeltaAvg,PacketsRx,PacketsRxDeltaAvg,PacketsTx,PacketsTxDeltaAvg
+                        $profileHash.Performance.vNics[$nic.Name] = $statistics | Where-Object {$_.Dn -cmatch $nic.EquipmentDn -and $_.Rn -ieq "vnic-stats"} | Select-Object BytesRx,BytesRxDeltaAvg,BytesTx,BytesTxDeltaAvg,PacketsRx,PacketsRxDeltaAvg,PacketsTx,PacketsTxDeltaAvg
                     }
                 }
 
@@ -2003,7 +2003,7 @@ function Generate_Health_Check
         #--- Iterate through each FI and collect port performance data based on port role ---#
         $DomainHash.Inventory.FIs | % {
             #--- Uplink Ports ---#
-            $_.Ports | ? IfRole -eq network | % {
+            $_.Ports | Where-Object IfRole -eq network | % {
                 $port = $_
                 $uplinkHash = @{}
                 $uplinkHash.Dn = $_.Dn
@@ -2015,14 +2015,14 @@ function Generate_Health_Check
                 $uplinkHash.IfType = $_.IfType
                 $uplinkHash.XcvrType = $_.XcvrType
                 $uplinkHash.Performance = @{}
-                $uplinkHash.Performance.Rx = $statistics | ? {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
-                $uplinkHash.Performance.Tx = $statistics | ? {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $uplinkHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $uplinkHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
                 $uplinkHash.Status = $_.OperState
                 $uplinkHash.State = $_.AdminState
                 $DomainHash.Lan.UplinkPorts += $uplinkHash
             }
             #--- Server Ports ---#
-            $_.Ports | ? IfRole -eq server | % {
+            $_.Ports | Where-Object IfRole -eq server | % {
                 $port = $_
                 $serverPortHash = @{}
                 $serverPortHash.Dn = $_.Dn
@@ -2034,8 +2034,8 @@ function Generate_Health_Check
                 $serverPortHash.IfType = $_.IfType
                 $serverPortHash.XcvrType = $_.XcvrType
                 $serverPortHash.Performance = @{}
-                $serverPortHash.Performance.Rx = $statistics | ? {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
-                $serverPortHash.Performance.Tx = $statistics | ? {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $serverPortHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $serverPortHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
                 $serverPortHash.Status = $_.OperState
                 $serverPortHash.State = $_.AdminState
                 $DomainHash.Lan.ServerPorts += $serverPortHash
@@ -2078,11 +2078,11 @@ function Generate_Health_Check
 
         #--- VLANs ---#
         $DomainHash.Lan.Vlans = @()
-        $DomainHash.Lan.Vlans += Get-UcsVlan -Ucs $handle | where {$_.IfRole -eq "network"} | Sort-Object -Property Ucs,Id
+        $DomainHash.Lan.Vlans += Get-UcsVlan -Ucs $handle | Where-Object {$_.IfRole -eq "network"} | Sort-Object -Property Ucs,Id
 
         #--- Network Control Policies ---#
         $DomainHash.Lan.Control_Policies = @()
-        $DomainHash.Lan.Control_Policies += Get-UcsNetworkControlPolicy -Ucs $handle | ? Dn -ne "fabric/eth-estc/nwctrl-default" | Select Cdp,MacRegisterMode,Name,UplinkFailAction,Descr,Dn,PolicyOwner
+        $DomainHash.Lan.Control_Policies += Get-UcsNetworkControlPolicy -Ucs $handle | Where-Object Dn -ne "fabric/eth-estc/nwctrl-default" | Select Cdp,MacRegisterMode,Name,UplinkFailAction,Descr,Dn,PolicyOwner
 
         #--- Mac Address Pool Definitions ---#
         $DomainHash.Lan.Mac_Pools = @()
@@ -2128,7 +2128,7 @@ function Generate_Health_Check
         #--- Iterate through each FI and grab san performance data based on port role ---#
         $DomainHash.Inventory.FIs | % {
             #--- SAN uplink ports ---#
-            $_.Ports | ? IfRole -cmatch "fc.*uplink" | % {
+            $_.Ports | Where-Object IfRole -cmatch "fc.*uplink" | % {
                 $port = $_
                 $uplinkHash = @{}
                 $uplinkHash.Dn = $_.Dn
@@ -2140,8 +2140,8 @@ function Generate_Health_Check
                 $uplinkHash.IfType = $_.IfType
                 $uplinkHash.XcvrType = $_.XcvrType
                 $uplinkHash.Performance = @{}
-                $uplinkHash.Performance.Rx = $statistics | ? {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
-                $uplinkHash.Performance.Tx = $statistics | ? {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $uplinkHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $uplinkHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
                 $uplinkHash.Status = $_.OperState
                 $uplinkHash.State = $_.AdminState
                 $DomainHash.San.UplinkFcoePorts += $uplinkHash
@@ -2159,7 +2159,7 @@ function Generate_Health_Check
                 $uplinkHash.Mode = $_.Mode
                 $uplinkHash.XcvrType = $_.XcvrType
                 $uplinkHash.Performance = @{}
-                $stats = $statistics | ? {$_.Dn -cmatch "$($port.Dn)/stats" -and $_.Rn -cmatch "stats"}
+                $stats = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/stats" -and $_.Rn -cmatch "stats"}
                 $uplinkHash.Performance.Rx = $stats | Select BytesRx,PacketsRx,BytesRxDeltaAvg
                 $uplinkHash.Performance.Tx = $stats | Select BytesTx,PacketsTx,BytesTxDeltaAvg
                 $uplinkHash.Status = $_.OperState
@@ -2167,7 +2167,7 @@ function Generate_Health_Check
                 $DomainHash.San.UplinkFcPorts += $uplinkHash
             }
             #--- SAN storage ports ---#
-            $_.Ports | ? IfRole -cmatch "storage" | % {
+            $_.Ports | Where-Object IfRole -cmatch "storage" | % {
                 $port = $_
                 $storagePortHash = @{}
                 $storagePortHash.Dn = $_.Dn
@@ -2179,8 +2179,8 @@ function Generate_Health_Check
                 $storagePortHash.IfType = $_.IfType
                 $storagePortHash.XcvrType = $_.XcvrType
                 $storagePortHash.Performance = @{}
-                $storagePortHash.Performance.Rx = $statistics | ? {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
-                $storagePortHash.Performance.Tx = $statistics | ? {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $storagePortHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $storagePortHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select TotalBytes,TotalPackets,TotalBytesDeltaAvg
                 $storagePortHash.Status = $_.OperState
                 $storagePortHash.State = $_.AdminState
                 $DomainHash.San.StoragePorts += $storagePortHash
@@ -2310,13 +2310,13 @@ function Generate_Health_Check
         }
         #--- Clean out unused runspace jobs ---#
         $temphash = $runspaces.clone()
-        $temphash | Where {
+        $temphash | Where-Object {
             $_.runspace -eq $Null
         } | ForEach {
             Write-Verbose ("Removing {0}" -f $_.computer)
             $Runspaces.remove($_)
         }
-        [console]::Title = ("Remaining Runspace Jobs: {0}" -f ((@($runspaces | Where {$_.Runspace -ne $Null}).Count)))
+        [console]::Title = ("Remaining Runspace Jobs: {0}" -f ((@($runspaces | Where-Object {$_.Runspace -ne $Null}).Count)))
     } while ($more)
 
     #--- Update overall progress to complete ---#
@@ -2414,14 +2414,14 @@ if(!(Get_CCO_Credentials)) { return }
             1 {
                 Clear-Host
                 Write-Host "Generating List.....`n"
-                $CCO_Image_List | where {$_.ImageName -match ("bundle-infra|bundle-b-series|bundle-c-series")} | Select-Object Version,ImageName | Sort-Object Version -descending | Select-Object -first 30 | Format-Table
+                $CCO_Image_List | Where-Object {$_.ImageName -match ("bundle-infra|bundle-b-series|bundle-c-series")} | Select-Object Version,ImageName | Sort-Object Version -descending | Select-Object -first 30 | Format-Table
                 $ans = Read-Host "`nPress any key to search for more firmware or M to return to the main menu"
                 if ($ans -match "M") { return }
             }
             2 {
                 Clear-Host
                 Write-Host "Generating List.....`n"
-                $CCO_Image_List | where {$_.ImageName -match "bxxx-drivers"} | Select-Object Version,ImageName | Sort-Object Version -descending | Format-Table
+                $CCO_Image_List | Where-Object {$_.ImageName -match "bxxx-drivers"} | Select-Object Version,ImageName | Sort-Object Version -descending | Format-Table
                 $ans = Read-Host "`nPress any key to search for more firmware or M to return to the main menu"
                 if ($ans -match "M") { return }
             }
@@ -2429,7 +2429,7 @@ if(!(Get_CCO_Credentials)) { return }
             3 {
                 Clear-Host
                 Write-Host "Generating List.....`n"
-                $CCO_Image_List | where {$_.ImageName -match "bxxx-utils"} | Select-Object Version,ImageName | Sort-Object Version -descending | Format-Table
+                $CCO_Image_List | Where-Object {$_.ImageName -match "bxxx-utils"} | Select-Object Version,ImageName | Sort-Object Version -descending | Format-Table
                 $ans = Read-Host "`nPress any key to search for more firmware or M to return to the main menu"
                 if ($ans -match "M") { return }
             }
@@ -2437,7 +2437,7 @@ if(!(Get_CCO_Credentials)) { return }
             4 {
                 Clear-Host
                 Write-Host "Generating List.....`n"
-                $CCO_Image_List | where {$_.ImageName -notmatch "docs"} | select-object Version,ImageName | Sort-object Version -descending
+                $CCO_Image_List | Where-Object {$_.ImageName -notmatch "docs"} | select-object Version,ImageName | Sort-object Version -descending
                 $ans = Read-Host "`nPress any key to continue"
             }
 
@@ -2467,7 +2467,7 @@ function Exit_Program()
 #--- Function that checks that all required powershell modules are present ---#
 function Check_Modules
 {
-    if(@(Get-Module -ListAvailable | ? {$_.Name -match "CiscoUcsPs|Cisco.UCSManager"}).Count -lt 1)
+    if(@(Get-Module -ListAvailable | Where-Object {$_.Name -match "CiscoUcsPs|Cisco.UCSManager"}).Count -lt 1)
     {
         #--- Windows Form to alert user that the UCS powertool is not detected ---#
         [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
@@ -2485,13 +2485,13 @@ function Check_Modules
     else
     {
             #--- Load UCS Module if not already loaded ---#
-            if(@(Get-Module -ListAvailable | ? {$_.Name -eq "CiscoUcsPs"}).Count -and (Get-Module | where {$_.Name -eq "CiscoUcsPS"}).Count -lt 1)
+            if(@(Get-Module -ListAvailable | Where-Object {$_.Name -eq "CiscoUcsPs"}).Count -and (Get-Module | Where-Object {$_.Name -eq "CiscoUcsPS"}).Count -lt 1)
             {
                 Write-Host "Loading Module: Cisco UCS PowerTool Module"
                 Write-Host ""
                 Import-Module CiscoUcsPs -ErrorAction Stop
             }
-            if(@(Get-Module -ListAvailable | ? {$_.Name -eq "Cisco.UCSManager"}).Count -and (Get-Module | where {$_.Name -eq "Cisco.UCSManager"}).Count -lt 1)
+            if(@(Get-Module -ListAvailable | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -and (Get-Module | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -lt 1)
             {
                 Write-Host "Loading Module: Cisco UCS PowerTool Module"
                 Write-Host ""
