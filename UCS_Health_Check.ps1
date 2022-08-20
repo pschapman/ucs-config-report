@@ -817,7 +817,7 @@ function Generate_Health_Check
             #--- Get blade CPU data ---#
             $cpu = ($childTargets | Where-Object {$_.Rn -match "cpu" -and $_.Model -ne ""} | Select-Object -first 1).Model
             #--- Get CPU common name and format text ---#
-            $bladeHash.CPU_Model = '(' + $blade.NumOfCpus + ') ' + ($cpu.Substring(([regex]::match($cpu,'CPU ').Index) + ([regex]::match($cpu,'CPU ').Length))).Replace(" ","")
+            $bladeHash.CPU_Model = '(' + $blade.NumOfCpus + ') ' + (($cpu).Replace("Intel(R) Xeon(R) ","")).Replace("CPU ","")
             $bladeHash.CPU_Cores = $blade.NumOfCores
             $bladeHash.CPU_Threads = $blade.NumOfThreads
             #--- Format available memory in GB ---#
