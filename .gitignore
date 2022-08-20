@@ -1,0 +1,11 @@
+# Credentials Cache
+ucs_cache.ucs
+
+# VS Code Customizations
+.vscode/
+
+# General Exclusions
+*.json
+*.html
+*.js
+
