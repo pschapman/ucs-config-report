@@ -700,7 +700,7 @@ function Generate_Health_Check
 
             #--- Get chassis PSU data and redundancy mode ---#
             $chassisHash.Psus = @()
-            $chassisHash.Psus = $chassis | Get-UcsPsu | Sort Id | Select-Object Type,Id,Model,Serial,Dn
+            $chassisHash.Psus = $chassis | Get-UcsPsu | Sort-Object Id | Select-Object Type,Id,Model,Serial,Dn
             $chassisHash.Power_Redundancy = ($chassis | Get-UcsComputePsuControl | Select-Object Redundancy).Redundancy
 
             #--- Add chassis to domain hash variable ---#
