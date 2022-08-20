@@ -2147,7 +2147,7 @@ function Generate_Health_Check
                 $DomainHash.San.UplinkFcoePorts += $uplinkHash
             }
             #--- FC Uplink Ports ---#
-            $_.FcUplinkPorts | ForEach-Object {
+            $_.FcUplinkPorts | Where-Object IfRole -cmatch "network" | ForEach-Object {
                 $port = $_
                 $uplinkHash = @{}
                 $uplinkHash.Dn = $_.Dn
