@@ -2385,39 +2385,13 @@ function Check_Modules() {
     .DESCRIPTION
         Function that checks that all required powershell modules are present
     #>
-    if(@(Get-Module -ListAvailable | Where-Object {$_.Name -match "CiscoUcsPs|Cisco.UCSManager"}).Count -lt 1)
-    {
-        # Windows Form to alert user that the UCS powertool is not detected
-        [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
-        $ans = [System.Windows.Forms.MessageBox]::Show(
-            "This script requires the UCS PowerTool Modules`n`nClick Yes to be directed to the download page", `
-            "Attention", `
-            [System.Windows.Forms.MessageBoxButtons]::YesNo, `
-            [System.Windows.Forms.MessageBoxIcon]::Exclamation)
-        if($ans -eq "Yes")
-        {
-         Start-Process 'http://software.cisco.com/download/type.html?mdfid=283850978&flowid=25021'
-        }
+    if(@(Get-Module -ListAvailable -Name Cisco.UCSManager).Count -lt 1) {
+        # Module not installed.
+        Write-Host "UCS POWERTOOLS NOT DETECTED! Please perform installation instructions listed in README.md."
         exit
     }
-    else
-    {
-            # Load UCS Module if not already loaded
-            if(@(Get-Module -ListAvailable | Where-Object {$_.Name -eq "CiscoUcsPs"}).Count -and (Get-Module | Where-Object {$_.Name -eq "CiscoUcsPS"}).Count -lt 1)
-            {
-                Write-Host "Loading Module: Cisco UCS PowerTool Module"
-                Write-Host ""
-                Import-Module CiscoUcsPs -ErrorAction Stop
-            }
-            if(@(Get-Module -ListAvailable | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -and (Get-Module | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -lt 1)
-            {
-                Write-Host "Loading Module: Cisco UCS PowerTool Module"
-                Write-Host ""
-                Import-Module Cisco.UCSManager -ErrorAction Stop
-            }
-    }
 }
-# Function to check user powershell version
+
 function Check_PS_Version() {
     <#
     .DESCRIPTION
