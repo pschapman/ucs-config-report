@@ -2392,29 +2392,6 @@ function Check_Modules() {
     }
 }
 
-function Check_PS_Version() {
-    <#
-    .DESCRIPTION
-        Function to check user powershell version
-    #>
-    $version = (Get-Host).Version.Major
-    if($version -lt 3)
-    {
-        # Windows Form to alert user the detected powershell version is not sufficient
-        [System.Reflection.Assembly]::LoadWithPartialName("System.Windows.Forms")
-        $ans = [System.Windows.Forms.MessageBox]::Show(
-            "This script requires Windows Management Framework 3.0 or higher`n`nClick Yes to be directed to the download page", `
-            "Attention", `
-            [System.Windows.Forms.MessageBoxButtons]::YesNo, `
-            [System.Windows.Forms.MessageBoxIcon]::Exclamation)
-        if($ans -eq "Yes")
-        {
-         Start-Process 'http://www.microsoft.com/en-us/download/details.aspx?id=34595'
-        }
-        exit
-    }
-}
-
 # === Main ===
 # Ensures cached credentials are passed for automated execution
 if($UseCached -eq $false -and $RunReport -eq $true)
@@ -2447,8 +2424,7 @@ If($UseCached -and $RunReport)
 }
 # Check that required modules are present
 Check_Modules
-# Check that the user is running powershell version 3.0 or higher
-Check_PS_Version
+
 # Main Menu
 $main_menu = "
         Menu
