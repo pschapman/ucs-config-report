@@ -6,6 +6,7 @@ ucs_cache.ucs
 
 # General Exclusions
 Experimental/
+TestArchive/
 *.json
 *.html
 *.js
