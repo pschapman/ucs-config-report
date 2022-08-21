@@ -53,8 +53,6 @@ Param(
 
 $UCS = @{}                              # Hash variable for storing UCS handles
 $UCS_Creds = @{}                        # Hash variable for storing UCS domain credentials
-$CCO_Creds = $null                      # Credential variable for pulling software from cisco.com
-$CCO_Image_List = $null                 # Stores the latest UCS firmware bundles from CCO
 $version = (Get-Host).Version.Major     # User's major powershell version
 $runspaces = $null                      # Runspace pool for simultaneous code execution
 $Silent_Path = './'                     # Path to save report when running in silent execution
@@ -2364,103 +2362,6 @@ function Generate_Health_Check() {
     if(-Not $Silent) { Read-Host "Health Check Complete.  Press any key to continue" }
 }
 
-function Get_CCO_Credentials() {
-    <#
-    .DESCRIPTION
-        Get CCO credentials from user to pull firmware data from cisco.com
-        !! DEPRECATED !! Pending removal from script.
-    #>
-    while ($true)
-    {
-        Clear-Host
-        Write-Host "Please enter CCO Credentials"
-        $error.clear()
-        try {
-            $testCreds = Get-Credential
-            $imageList = Get-UcsCcoImageList -Credential $testCreds
-        }
-        catch {
-            $ans = Read-Host "Error authenticating CCO Credentials.`n`nPress enter to retry or M to return to Main Menu"
-            Switch -regex ($ans.ToUpper())
-            {
-                "^[M]" {
-                    return 0
-                }
-                default { continue }
-            }
-        }
-        if(!$error) {
-            $script:CCO_Creds = $testCreds
-            $script:CCO_Image_List = $imageList
-            return 1
-        }
-    }
-}
-
-function View_FW() {
-    <#
-    .DESCRIPTION
-        Funtion for user to view available firmware from Cisco.com
-        !! DEPRECATED !! Pending removal from script.
-    #>
-
-    if(!(Get_CCO_Credentials)) { return }
-
-    $list_menu = "
-        UCSM FW Menu
-
-1. View Available UCSM FW
-2. View Available Driver CDs
-3. View Available Utilities
-4. View All FW
-5. Return to Main Menu
-"
-    while ($true)
-    {
-        Clear-Host
-        Write-Host $list_menu
-        $option = Read-Host "`nEnter Command Number"
-
-        Switch ($option)
-        {
-            1 {
-                Clear-Host
-                Write-Host "Generating List.....`n"
-                $CCO_Image_List | Where-Object {$_.ImageName -match ("bundle-infra|bundle-b-series|bundle-c-series")} | Select-Object Version,ImageName | Sort-Object Version -descending | Select-Object -first 30 | Format-Table
-                $ans = Read-Host "`nPress any key to search for more firmware or M to return to the main menu"
-                if ($ans -match "M") { return }
-            }
-            2 {
-                Clear-Host
-                Write-Host "Generating List.....`n"
-                $CCO_Image_List | Where-Object {$_.ImageName -match "bxxx-drivers"} | Select-Object Version,ImageName | Sort-Object Version -descending | Format-Table
-                $ans = Read-Host "`nPress any key to search for more firmware or M to return to the main menu"
-                if ($ans -match "M") { return }
-            }
-
-            3 {
-                Clear-Host
-                Write-Host "Generating List.....`n"
-                $CCO_Image_List | Where-Object {$_.ImageName -match "bxxx-utils"} | Select-Object Version,ImageName | Sort-Object Version -descending | Format-Table
-                $ans = Read-Host "`nPress any key to search for more firmware or M to return to the main menu"
-                if ($ans -match "M") { return }
-            }
-
-            4 {
-                Clear-Host
-                Write-Host "Generating List.....`n"
-                $CCO_Image_List | Where-Object {$_.ImageName -notmatch "docs"} | select-object Version,ImageName | Sort-object Version -descending
-                $ans = Read-Host "`nPress any key to continue"
-            }
-
-            5 {
-                return
-            }
-        }
-
-    }
-}
-
 function Exit_Program() {
     <#
     .DESCRIPTION
@@ -2580,8 +2481,7 @@ $main_menu = "
 
 1. Connect/Disconnect UCS Domains
 2. Generate UCS Health Check Report
-3. View Available UCS Firmware from Cisco.com
-4. Exit Program
+Q. Exit Program
 "
 :menu
 while ($true)
@@ -2595,10 +2495,8 @@ while ($true)
         1 {    Connection_Mgmt    }
         # Run UCS Health Check Report
         2 { Generate_Health_Check }
-        # View available FW from Cisco.com
-        3 { View_FW }
         # Cleanly exit program
-        4 {
+        'q' {
             Exit_Program
             break menu
         }
