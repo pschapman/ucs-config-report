@@ -53,10 +53,9 @@ Param(
 
 $UCS = @{}                              # Hash variable for storing UCS handles
 $UCS_Creds = @{}                        # Hash variable for storing UCS domain credentials
-$version = (Get-Host).Version.Major     # User's major powershell version
 $runspaces = $null                      # Runspace pool for simultaneous code execution
-$Silent_Path = './'                     # Path to save report when running in silent execution
-$Silent_FileName = 'UCS_Report_' + (Get-Date -format MM_dd_yyyy_HH_mm_ss) + '.html'     # Filename of report when running in silent execution
+$dflt_output_path = [System.Environment]::GetFolderPath('Desktop') # Default output path. Alternate: $pwd
+$Silent_FileName = "UCS_Report_$(Get-Date -format MM_dd_yyyy_HH_mm_ss).html"     # Filename of report when running in silent execution
 
 # Email Variables - Modify these values to email the report
 # =========================================================
@@ -370,43 +369,28 @@ function Connection_Mgmt() {
 Function Get-SaveFile($initialDirectory) {
     <#
     .DESCRIPTION
-        Creates a Windows File Dialog to select the save file location
+        Creates a Windows File Dialog to select the save file location. Offer default filename to user.
     .OUTPUTS
-        [string] - [default return] Either $savefiledialog.filename or $savepath
+        [string] - User selected file or silent file in script directory
     #>
     Clear-Host
+    Write-Host "Opening Windows Dialog Box..."
 
-    # SaveDialog Form requires powershell version 3.0 or higher.  Check for the users powershell version
-    if($Version -gt 2)
-    {
-        [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms") | Out-Null
+    $null = [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms")
+    $SaveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+    $SaveFileDialog.initialDirectory = $initialDirectory
+    $SaveFileDialog.FileName = $Silent_FileName
+    $SaveFileDialog.filter = "HTML Document (*.html)| *.html"
+    $user_action =  $SaveFileDialog.ShowDialog()
 
-        $SaveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
-        $SaveFileDialog.initialDirectory = $initialDirectory
-        $SaveFileDialog.filter = "HTML Document (*.html)| *.html"
-        $SaveFileDialog.ShowDialog() | Out-Null
-        $SaveFileDialog.filename
+    if ($user_action -eq 'OK') {
+        $file_name = $SaveFileDialog.filename
+    } else {
+        Write-Host "DIALOG BOX CANCELED!! Sending output to script folder."
+        $file_name = "./$($Silent_FileName)"
+        Start-Sleep(3)
     }
-    # If user powershell version is less than 3.0 use a text based prompt for collecting file-path
-    else
-    {
-        while ($true)
-        {
-            $savePath = Read-Host "Please enter the path for where the report will be saved"
-            if (!(Test-Path $savePath))
-            {
-                Write-Host "Error: File Path could not be validated`n"
-            }
-            else
-            {
-                $fileName = Read-Host "Please enter the filename for the report (no file extensions)"
-                $savePath = $savePath + "$filename.html"
-                $savePath
-                break
-            }
-        }
-
-    }
+    return $file_name
 }
 
 function Generate_Health_Check() {
@@ -438,7 +422,7 @@ function Generate_Health_Check() {
     else
     {
         # Grab filename for the report
-        $OutputFile = Get-SaveFile($pwd)
+        $OutputFile = Get-SaveFile($dflt_output_path)
     }
     Clear-Host
     Write-Host "Generating Report..."
