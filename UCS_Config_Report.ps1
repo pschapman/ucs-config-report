@@ -496,11 +496,16 @@ function Generate_Health_Check
 
         #--- Set Job Progress to 0 and connect to the UCS domain passed ---#
         $Process_Hash.Progress[$domain] = 0;
-        if(@(Get-Module -ListAvailable | Where-Object {$_.Name -eq "CiscoUcsPs"}).Count -and (Get-Module | Where-Object {$_.Name -eq "CiscoUcsPS"}).Count -lt 1)
-        {
-            Import-Module CiscoUcsPs -ErrorAction Stop
-        }
-        if(@(Get-Module -ListAvailable | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -and (Get-Module | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -lt 1)
+        # if(@(Get-Module -ListAvailable | Where-Object {$_.Name -eq "CiscoUcsPs"}).Count -and (Get-Module | Where-Object {$_.Name -eq "CiscoUcsPS"}).Count -lt 1)
+        # {
+        #     Import-Module CiscoUcsPs -ErrorAction Stop
+        # }
+        # if(@(Get-Module -ListAvailable | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -and (Get-Module | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -lt 1)
+        # {
+        #     Import-Module Cisco.UCSManager -ErrorAction Stop
+        # }
+
+        if((Get-Module | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -lt 1)
         {
             Import-Module Cisco.UCSManager -ErrorAction Stop
         }
@@ -1961,12 +1966,12 @@ function Generate_Health_Check
                     #--- Iterate through each vHBA and grab performance data ---#
                     $profileHash.Storage.Hbas | ForEach-Object {
                         $hba = $_
-                        $profileHash.Performance.vHbas[$hba.Name] = $statistics | Where-Object {$_.Dn -cmatch $hba.EquipmentDn -and $_.Rn -ieq "vnic-stats"} | Select-Object BytesRx,BytesRxDeltaAvg,BytesTx,BytesTxDeltaAvg,PacketsRx,PacketsRxDeltaAvg,PacketsTx,PacketsTxDeltaAvg
+                        $profileHash.Performance.vHbas[$hba.Name] = $statistics.Where({$_.Dn -cmatch $hba.EquipmentDn -and $_.Rn -ieq "vnic-stats"}) | Select-Object BytesRx,BytesRxDeltaAvg,BytesTx,BytesTxDeltaAvg,PacketsRx,PacketsRxDeltaAvg,PacketsTx,PacketsTxDeltaAvg
                     }
                     #--- Iterate through each vNIC and grab performance data ---#
                     $profileHash.Network.Nics | ForEach-Object {
                         $nic = $_
-                        $profileHash.Performance.vNics[$nic.Name] = $statistics | Where-Object {$_.Dn -cmatch $nic.EquipmentDn -and $_.Rn -ieq "vnic-stats"} | Select-Object BytesRx,BytesRxDeltaAvg,BytesTx,BytesTxDeltaAvg,PacketsRx,PacketsRxDeltaAvg,PacketsTx,PacketsTxDeltaAvg
+                        $profileHash.Performance.vNics[$nic.Name] = $statistics.Where({$_.Dn -cmatch $nic.EquipmentDn -and $_.Rn -ieq "vnic-stats"}) | Select-Object BytesRx,BytesRxDeltaAvg,BytesTx,BytesTxDeltaAvg,PacketsRx,PacketsRxDeltaAvg,PacketsTx,PacketsTxDeltaAvg
                     }
                 }
 
@@ -2015,8 +2020,8 @@ function Generate_Health_Check
                 $uplinkHash.IfType = $_.IfType
                 $uplinkHash.XcvrType = $_.XcvrType
                 $uplinkHash.Performance = @{}
-                $uplinkHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
-                $uplinkHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $uplinkHash.Performance.Rx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $uplinkHash.Performance.Tx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
                 $uplinkHash.Status = $_.OperState
                 $uplinkHash.State = $_.AdminState
                 $DomainHash.Lan.UplinkPorts += $uplinkHash
@@ -2034,8 +2039,8 @@ function Generate_Health_Check
                 $serverPortHash.IfType = $_.IfType
                 $serverPortHash.XcvrType = $_.XcvrType
                 $serverPortHash.Performance = @{}
-                $serverPortHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
-                $serverPortHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $serverPortHash.Performance.Rx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $serverPortHash.Performance.Tx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
                 $serverPortHash.Status = $_.OperState
                 $serverPortHash.State = $_.AdminState
                 $DomainHash.Lan.ServerPorts += $serverPortHash
@@ -2140,8 +2145,8 @@ function Generate_Health_Check
                 $uplinkHash.IfType = $_.IfType
                 $uplinkHash.XcvrType = $_.XcvrType
                 $uplinkHash.Performance = @{}
-                $uplinkHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
-                $uplinkHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $uplinkHash.Performance.Rx =$statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $uplinkHash.Performance.Tx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
                 $uplinkHash.Status = $_.OperState
                 $uplinkHash.State = $_.AdminState
                 $DomainHash.San.UplinkFcoePorts += $uplinkHash
@@ -2159,7 +2164,7 @@ function Generate_Health_Check
                 $uplinkHash.Mode = $_.Mode
                 $uplinkHash.XcvrType = $_.XcvrType
                 $uplinkHash.Performance = @{}
-                $stats = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/stats" -and $_.Rn -cmatch "stats"}
+                $stats = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/stats" -and $_.Rn -cmatch "stats"})
                 $uplinkHash.Performance.Rx = $stats | Select-Object BytesRx,PacketsRx,BytesRxDeltaAvg
                 $uplinkHash.Performance.Tx = $stats | Select-Object BytesTx,PacketsTx,BytesTxDeltaAvg
                 $uplinkHash.Status = $_.OperState
@@ -2179,8 +2184,8 @@ function Generate_Health_Check
                 $storagePortHash.IfType = $_.IfType
                 $storagePortHash.XcvrType = $_.XcvrType
                 $storagePortHash.Performance = @{}
-                $storagePortHash.Performance.Rx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
-                $storagePortHash.Performance.Tx = $statistics | Where-Object {$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"} | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $storagePortHash.Performance.Rx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+                $storagePortHash.Performance.Tx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
                 $storagePortHash.Status = $_.OperState
                 $storagePortHash.State = $_.AdminState
                 $DomainHash.San.StoragePorts += $storagePortHash
