@@ -5,6 +5,7 @@ ucs_cache.ucs
 .vscode/
 
 # General Exclusions
+Experimental/
 *.json
 *.html
 *.js
