@@ -2,7 +2,7 @@
 
 <#
     .SYNOPSIS
-        UCS Health Check v 2.6
+         UCS Health Check v 2.6
 
     .DESCRIPTION
         Script for polling multiple UCS Domains and creating an html report of the domain inventory, configuration,
