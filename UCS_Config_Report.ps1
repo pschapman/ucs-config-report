@@ -19,7 +19,7 @@ Bypasses prompts and menus. Auto-names report as [UCS_Report_YY_MM_DD_hh_mm_ss.h
 -RunReport and -UseCached.
 
 .PARAMETER Email
-Email the report file after automated execution.  Must specify target email address.
+Email the report file after automated execution.  Must specify target email address. (e.g., user@domain.tld)
 
 .EXAMPLE
 UCS_Config_Report.ps1 -UseCached -RunReport -Silent -Email user@domain.tld
@@ -28,9 +28,10 @@ Run Script with no interaction and email report. UCS cache file must be populate
 task.
 
 .NOTES
-Version: v4.0 forked from UCS Health Check v2.6
+Version: 4.0
 Attributions::
     Author: Paul S. Chapman (pchapman@convergeone.com) 08/20/2022
+    History: UCS Configuration Report forked from UCS Health Check v2.6
     Source: Brandon Beck (robbeck@cisco.com) 05/11/2014
     Contribution: Marcello Turano
 
@@ -57,12 +58,13 @@ $runspaces = $null                      # Runspace pool for simultaneous code ex
 $dflt_output_path = [System.Environment]::GetFolderPath('Desktop') # Default output path. Alternate: $pwd
 $Silent_FileName = "UCS_Report_$(Get-Date -format MM_dd_yyyy_HH_mm_ss).html"     # Filename of report when running in silent execution
 
-# Email Variables - Modify these values to email the report
+# Email Variables
 # =========================================================
-$Email_Report = 0
-#$smtpServer = "smtpserver"
-#$mailfrom = "Cisco UCS Healtcheck <ucshcheck@domain.com>"
-#$mailto = "user@domain.com"
+$mail_server = ""        # Example: "mxa-00239201.gslb.pphosted.com"
+$mail_from = ""          # Example: "Cisco UCS Healtcheck <user@domain.tld>"
+# =========================================================
+$test_mail_flag = $false # Boolean - Enable for testing without CLI argument
+$test_mail_to = ""       # Example: "user@domain.tld"
 
 function HandleExists ($Domain) {
     <#
@@ -396,7 +398,7 @@ function Generate_Health_Check() {
     $Process_Hash.Domains = @{}
     $Process_Hash.Progress = @{}
 
-    # Function Variable called for each UCS domain
+    # Pseudo-function in ScriptBlock format called for each UCS domain
     $GetUcsData = {
         Param ($domain, $Process_Hash)
 
@@ -1222,14 +1224,13 @@ function Generate_Health_Check() {
                 $policy | Get-UcsChild | Sort-Object Order | ForEach-Object {
                     # Store current pipe variable to local variable
                     $entry = $_
-                    #===========================================================#
-                    #    Switch statement using the device type as the target    #
-                    #                                                            #
-                    #    Variable Definitions:                                    #
-                    #        Level1 - VNIC, Order                                #
-                    #        Level2 - Type, VNIC Name                            #
-                    #        Level3 - Lun, Type, WWN                                #
-                    #===========================================================#
+                    # =======================================================#
+                    # Switch statement using the device type as the target   #
+                    # Variable Definitions:                                  #
+                    #     Level1 - VNIC, Order                               #
+                    #     Level2 - Type, VNIC Name                           #
+                    #     Level3 - Lun, Type, WWN                            #
+                    # =======================================================#
                     Switch ($entry.Type) {
                         # Matches either local media or SAN storage
                         'storage' {
@@ -2220,17 +2221,22 @@ function Generate_Health_Check() {
     Set-Content -Path $OutputFile -Value $ReportRawText
 
     # Email Report if Email switch is set or Email_Report is set
-    if ($Email_Report -or $Email) {
-        $msg = new-object Net.Mail.MailMessage
-        $att = new-object Net.Mail.Attachment(resolve-path $OutputFile)
-        $smtp = new-object Net.Mail.SmtpClient($smtpServer)
+    if ($Email) {$mail_to = $Email} else {$mail_to = $test_mail_to}
 
-        if($Email) {$msg.To.Add($Email)} else {$msg.To.Add($mailto)}
-        $msg.From = $mailfrom
-        $msg.Subject = "Cisco UCS Health Check"
-        $msg.Body = "Cisco UCS Health Check, open the attached HTML file to view the report."
-        $msg.Attachments.Add($att)
-        $smtp.Send($msg)
+    if ($test_mail_flag -or $Email) {
+        if ($mail_server -and $mail_from -and $mail_to) {
+            $cmd_args = @{
+                To = $mail_to
+                From = $mail_from
+                SmtpServer = $mail_server
+                Subject = "Cisco UCS Configuration Report"
+                Body = "Hi-`n`nThis is an automatic message by UCS Configuration Report.  Please see attachment."
+                Attachment = $OutputFile
+            }
+            Send-MailMessage @cmd_args -UseSsl
+        } else {
+            Write-Host "Not all email parameters configured."
+        }
     }
 
     # Write elapsed time to user
