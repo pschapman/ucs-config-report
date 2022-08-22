@@ -8,7 +8,7 @@
   - [ ] Disjoint L2
 - [x] Separate HTML report template (including CSS and JScript) to ease updates
 - [ ] Improve performance
-- [x] Change minimum PowerShell version to 5 - **Complete**
+- [x] Change minimum PowerShell version to 5
 - [ ] Apply Python style coding practices according to [The PowerShell Style Guide](https://github.com/PoshCode/PowerShellPracticeAndStyle/blob/master/Style-Guide/Introduction.md)
 - [ ] Refactor where possible to make code more DRY and readable
 
