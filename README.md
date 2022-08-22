@@ -25,7 +25,7 @@ See original [README](https://github.com/datacenter/ucs-browser)
       2. If below 5, then install latest management pack
    2. **Mac**
       1. Review [Microsoft KB Article][1] for prerequisites.
-2. Install VMware PowerCLI tools (Check with `Get-Module -ListAvailable -Name Cisco.UCSManager | select Name,Version`)
+2. Install UCS Power Tool (Check with `Get-Module -ListAvailable -Name Cisco.UCSManager | select Name,Version`)
    1. **Windows (Internet Required) (Run as Administrator Required)**:
       1. Update PowerShell Help
          1. `Update-Help -Force -ErrorAction SilentlyContinue`
@@ -35,7 +35,7 @@ See original [README](https://github.com/datacenter/ucs-browser)
          1. `Install-Module PowerShellGet -Force -AllowClobber`
       4. Restart PowerShell (Run as Administrator Required)
       5. Install UCS Power Tools from Internet Repository (NuGet)
-         1. `Install-Module -Name Cisco-UCSManager`
+         1. `Install-Module -Name Cisco.UCSManager`
       6. Lower PowerShell Execution Policy level (Check with company security policy)
          1. `Set-ExecutionPolicy -Unrestricted`
       7. Verify new module has been properly loaded.
@@ -44,9 +44,9 @@ See original [README](https://github.com/datacenter/ucs-browser)
       1. Update PowerShell Help
          1. `Update-Help -Force -ErrorAction SilentlyContinue`
       2. Install UCS Power Tools from Internet Repository (NuGet)
-         1. `Install-Module VMware.PowerCLI`
+         1. `Install-Module Cisco.UCSManager`
       3. Verify new module has been properly loaded.
-         1. `Import-Module VMware.PowerCLI`
+         1. `Import-Module Cisco.UCSManager`
 
 [1]: https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-macos?view=powershell-7.2
 
