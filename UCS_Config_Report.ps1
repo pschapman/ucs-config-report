@@ -28,7 +28,7 @@ Run Script with no interaction and email report. UCS cache file must be populate
 task.
 
 .NOTES
-Version:  v4.0 forked from UCS Health Check v2.6
+Version: v4.0 forked from UCS Health Check v2.6
 Attributions::
     Author: Paul S. Chapman (pchapman@convergeone.com) 08/20/2022
     Source: Brandon Beck (robbeck@cisco.com) 05/11/2014
@@ -74,12 +74,11 @@ function HandleExists ($Domain) {
         [bool] - Existance of handle
     #>
     $error.clear()
-    try { Get-UcsStatus -Ucs $Domain.Handle | Out-Null}
-    catch
-    {
+    try {Get-UcsStatus -Ucs $Domain.Handle | Out-Null}
+    catch {
         return $false
     }
-    if (!$error) { return $true }
+    if (!$error) {return $true}
 }
 
 function HaveHandle () {
@@ -89,8 +88,7 @@ function HaveHandle () {
     .OUTPUTS
         [bool] - Existance of handle
     #>
-    foreach ($Domain in $UCS.get_keys())
-    {
+    foreach ($Domain in $UCS.get_keys()) {
         if(HandleExists($UCS[$Domain])) {return $true}
     }
     return $false
@@ -105,8 +103,7 @@ function Connect_Ucs() {
         [none] Updates script global $UCS and $UCS_Creds hash tables
     #>
     # If UseCached parameter is passed then grab all UCS credentials from cache file and attempt to login
-    if($UseCached)
-    {
+    if($UseCached) {
         Clear-Host
         # Grab each line from the cache file, remove all white space, and pass to a foreach loop
         Get-Content "$((Get-Location).Path)\ucs_cache.ucs" | Where-Object {$_.trim() -ne ""} | ForEach-Object {
@@ -115,12 +112,10 @@ function Connect_Ucs() {
             $credData = $_.Split(",")
 
             # Ensure we have all three components if the credential data
-            if($credData.Count -eq 3)
-            {
+            if($credData.Count -eq 3) {
                 # Clear system $error variable before trying a UCS connection
                 $error.clear()
-                try
-                {
+                try {
                     # Attempts to create a UCS handle and stores the handle into the global UCS hash variable if connection is successful
                     $domain = @{}
                     $domain.VIP = $credData[0]
@@ -132,21 +127,16 @@ function Connect_Ucs() {
 
                 }
                 # Catch any failed domain connections
-                catch [Exception]
-                {
+                catch [Exception] {
                     # Allow user to continue/exit script execution if a connection fails
                     $ans = Read-Host "Error connecting to UCS Domain at $($domain.VIP)  Press C to continue or any other key to exit"
-                    Switch -regex ($ans.ToUpper())
-                    {
-                        "^[C]" {
-                            continue
-                        }
-                        default { exit }
+                    Switch -regex ($ans.ToUpper()) {
+                        "^[C]" {continue}
+                        default {exit}
                     }
                 }
                 # Display a message to the user that the attempted UCS domain connection was successful and add handle to global UCS variable
-                if (!$error)
-                {
+                if (!$error) {
                     Write-Host "Successfully Connected to UCS Domain: $($domain.Handle.Ucs)"
                     $domain.Name = $domain.Handle.Ucs
                     $script:UCS.Add($domain.Handle.Ucs, $domain)
@@ -157,12 +147,9 @@ function Connect_Ucs() {
             }
         }
         Start-Sleep(1)
-    }
+    } else {
     # Connect to a single UCS domain through an interactive prompt
-    else
-    {
-        while ($true)
-        {
+        while ($true) {
             Clear-Host
             # Prompts user for UCS IP/DNS and user creential
             Write-Host "Please enter the UCS Domain information"
@@ -173,8 +160,7 @@ function Connect_Ucs() {
 
             # Clear error variable to check for failed connections
             $error.clear()
-            try
-            {
+            try {
                 # Attempt UCS connection from entered data
                 $domain.Handle = Connect-Ucs $domain.VIP -Credential $domain.Creds -NotDefault -ErrorAction SilentlyContinue
                 # Checks that handle actually exists
@@ -182,20 +168,15 @@ function Connect_Ucs() {
 
             }
             # Catch failed connection attempts and allow user to re-enter credentials
-            catch [Exception]
-            {
+            catch [Exception] {
                 # Press M to return to menu or any other key to re-enter credentials
                 $ans = Read-Host "Error connecting to UCS Domain.  Press enter to retry or M to return to Main Menu"
-                Switch -regex ($ans.ToUpper())
-                {
-                    "^[M]" {
-                        return
-                    }
-                    default { continue }
+                Switch -regex ($ans.ToUpper()) {
+                    "^[M]" {return}
+                    default {continue}
                 }
             }
-            if (!$error)
-            {
+            if (!$error) {
                 # Notify the user that the connection was successful and add handle to global UCS variable
                 Write-Host "`nSuccessfully Connected to UCS Domain: $($domain.Handle.Ucs)"
                 Write-Host "Redirecting to Main Menu..."
@@ -225,101 +206,84 @@ function Connection_Mgmt() {
     4. Clear session cache
     5. Select Session for Disconnect
     6. Disconnect all Active Sessions
-    7. Return to Main Menu
-"
-    while ($true)
-    {
+    7. Return to Main Menu`n"
+
+    while ($true) {
         Clear-Host
         Write-Host $conn_menu
         $option = Read-Host "Enter Command Number"
-        Switch ($option)
-        {
-            1 { Connect_Ucs }
+        Switch ($option) {
+            1 {Connect_Ucs}
 
             # Print all active UCS handles to the screen
             2 {
                 Clear-Host
-                if(!(HaveHandle)){
+                if(!(HaveHandle)) {
                     Read-Host "There are currently no connected UCS domains`n`nPress any key to continue"
                     break
                 }
                 $index = 1
                 Write-Host "`t`tActive Session List`n$("-"*60)"
-                foreach    ($Domain in $UCS.get_keys())
-                {
+                foreach ($Domain in $UCS.get_keys()) {
                     # Checks if the UCS domain is active and prints a formatted list
-                    if(HandleExists($UCS[$Domain]))
-                    {
-                        "{0,-28} {1,20}" -f "$index) $($UCS[$Domain].Name)",$UCS[$Domain].VIP
+                    if(HandleExists($UCS[$Domain])) {
+                        # Composite format using -f method
+                        "$($index)) {0,-28} {1,20}" -f $($UCS[$Domain].Name),$UCS[$Domain].VIP
                         $index++
                     }
                 }
                 Read-Host "`nPress any key to return to menu"
-
             }
 
             # Cache all UCS handles to a cache file for future reference
             3 {
                 # Check for an empty domain list
-                if($UCS_Creds.Count -eq 0)
-                {
+                if($UCS_Creds.Count -eq 0) {
                     Read-Host "`nThere are currently no connected UCS domains`n`nPress any key to continue"
                     break
                 }
                 # Iterate through UCS domain hash and store information to cache file
-                foreach    ($Domain in $UCS.get_keys())
-                {
+                foreach ($Domain in $UCS.get_keys()) {
                     # If the cache file already exists remove any lines that match the current domain name
-                    If(Test-Path "$((Get-Location).Path)\ucs_cache.ucs")
-                    {
+                    If(Test-Path "$((Get-Location).Path)\ucs_cache.ucs") {
                         (Get-Content "$((Get-Location).Path)\ucs_cache.ucs") | ForEach-Object {$_ -replace "$($UCS_Creds[$Domain].VIP).*", ""} | Set-Content "$((Get-Location).Path)\ucs_cache.ucs"
                     }
                     # Add the current domain access data to the cache
                     $UCS_Creds[$Domain].VIP + ',' + $UCS_Creds[$Domain].Creds.Username + ',' + ($UCS_Creds[$Domain].Creds.Password | ConvertFrom-SecureString) | Add-Content "$((Get-Location).Path)\ucs_cache.ucs"
                 }
                 Read-Host "`nCredentials have been cached to $((Get-Location).Path)\ucs_cache.ucs`n`nPress any key to continue"
-
             }
 
             # Removes the UCS cache file for storing domain connection data
-            4 {
-                Remove-Item "$((Get-Location).Path)\ucs_cache.ucs"
-
-            }
+            4 {Remove-Item "$((Get-Location).Path)\ucs_cache.ucs"}
 
             # Text driven user interface for disconnecting from multiple UCS domains
             5 {
                 Clear-Host
-                if(!(HaveHandle)){
+                if(!(HaveHandle)) {
                     Read-Host "There are currently no connected UCS domains`n`nPress any key to continue"
                     break
                 }
                 $index = 1
                 $target = @{}
                 Write-Host "`t`tActive Session List`n$("-"*60)"
-
                 # Creates a hash of all active domains and prints them in a list
-                foreach    ($Domain in $UCS.get_keys())
-                {
-                    if(HandleExists($UCS[$Domain]))
-                    {
+                foreach ($Domain in $UCS.get_keys()) {
+                    if(HandleExists($UCS[$Domain])) {
+                        # Composite format using -f method
                         "{0,-28} {1,20}" -f "$index) $($UCS[$Domain].Name)",$UCS[$Domain].VIP
                         $target.add($index, $UCS[$Domain].Name)
                         $index++
                     }
                 }
-
                 $command = Read-host "`nPlease Select Domains to disconnect (comma separated)"
                 $disconnectList = $command.split(",")
-                foreach($id in $disconnectList){
+                foreach($id in $disconnectList) {
                     # Check if entered id is within the valid range
-                    if($id -lt 1 -or $id -gt $target.count)
-                    {
+                    if($id -lt 1 -or $id -gt $target.count) {
                         Write-Host "$id is not a valid option.  Ommitting..."
-                    }
+                    } else {
                     # Disconnect UCS handle
-                    else
-                    {
                         Write-Host "Disconnecting $($target[[int]$id])..."
                         $target[$id]
                         Disconnect-Ucs -Ucs $UCS[$target[[int]$id]].Handle
@@ -327,38 +291,32 @@ function Connection_Mgmt() {
                     }
                 }
                 Read-Host "`nPress any key to return to continue"
-
             }
 
             # Disconnects all UCS domain handles
             6 {
                 Clear-Host
-                if(!(HaveHandle)){
+                if(!(HaveHandle)) {
                     Read-Host "There are currently no connected UCS domains`n`nPress any key to continue"
                     break
                 }
                 $target = @()
-                foreach    ($Domain in $UCS.get_keys())
-                {
-                    if(HandleExists($UCS[$Domain]))
-                    {
+                foreach    ($Domain in $UCS.get_keys()) {
+                    if(HandleExists($UCS[$Domain])) {
                         Write-Host "Disconnecting $($UCS[$Domain].Name)..."
                         Disconnect-Ucs -Ucs $UCS[$Domain].Handle
                         $target += $UCS[$Domain].Name
                     }
                 }
-                foreach ($id in $target)
-                {
+                foreach ($id in $target) {
                     $script:UCS.Remove($id)
                 }
-
                 Read-Host "`nPress any key to continue"
                 break
             }
+
             # Returns to the main menu
-            7 {
-                return
-            }
+            7 {return}
             default {
                 Read-Host "Invalid Option.  Please select a valid option from the Menu above`nPress any key to continue"
             }
@@ -399,7 +357,7 @@ function Generate_Health_Check() {
         Function for creating the html health check report for all of the connected UCS domains
     #>
     # Check to ensure an active UCS handle exists before generating the report
-    if(!(HaveHandle)){
+    if(!(HaveHandle)) {
         Read-Host "There are currently no connected UCS domains`n`nPress any key to continue"
         return
     }
@@ -407,23 +365,23 @@ function Generate_Health_Check() {
     $GetElapsedTime = {
         param ($start)
         $runtime = $(get-date) - $start
-        $retStr = [string]::format("{0} days, {1} hours, {2} minutes, {3}.{4} seconds", `
-            $runtime.Days, `
-            $runtime.Hours, `
-            $runtime.Minutes, `
-            $runtime.Seconds, `
-            $runtime.Milliseconds)
+        $retStr = [string]::format(
+            "{0} hours, {1} minutes, {2}.{3} seconds",
+            $runtime.Hours,
+            $runtime.Minutes,
+            $runtime.Seconds,
+            $runtime.Milliseconds
+        )
         $retStr
     }
-    if($Silent)
-    {
+
+    if($Silent) {
         $OutputFile = $Silent_Path + $Silent_FileName
-    }
-    else
-    {
+    } else {
         # Grab filename for the report
         $OutputFile = Get-SaveFile($dflt_output_path)
     }
+
     Clear-Host
     Write-Host "Generating Report..."
 
@@ -453,8 +411,7 @@ function Generate_Health_Check() {
         #     Import-Module Cisco.UCSManager -ErrorAction Stop
         # }
 
-        if((Get-Module | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -lt 1)
-        {
+        if((Get-Module | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -lt 1) {
             Import-Module Cisco.UCSManager -ErrorAction Stop
         }
         $handle = Connect-Ucs $Process_Hash.Creds[$domain].VIP -Credential $Process_Hash.Creds[$domain].Creds
@@ -491,14 +448,14 @@ function Generate_Health_Check() {
         # Get System and Server power statistics
         $DomainHash.System.Chassis_Power = @()
         $DomainHash.System.Chassis_Power += Get-UcsChassisStats -Ucs $handle | Select-Object Dn,InputPower,InputPowerAvg,InputPowerMax,OutputPower,OutputPowerAvg,OutputPowerMax,Suspect
-        $DomainHash.System.Chassis_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]stats)',"") }
+        $DomainHash.System.Chassis_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]stats)',"")}
         $DomainHash.System.Server_Power = @()
         $DomainHash.System.Server_Power += Get-UcsComputeMbPowerStats -Ucs $handle | Sort-Object -Property Dn | Select-Object Dn,ConsumedPower,ConsumedPowerAvg,ConsumedPowerMax,InputCurrent,InputCurrentAvg,InputVoltage,InputVoltageAvg,Suspect
-        $DomainHash.System.Server_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('([/]board.*)',"") }
+        $DomainHash.System.Server_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('([/]board.*)',"")}
         # Get Server temperatures
         $DomainHash.System.Server_Temp = @()
         $DomainHash.System.Server_Temp += Get-UcsComputeMbTempStats -Ucs $handle | Sort-Object -Property Ucs,Dn | Select-Object Dn,FmTempSenIo,FmTempSenIoAvg,FmTempSenIoMax,FmTempSenRear,FmTempSenRearAvg,FmTempSenRearMax,FmTempSenRearL,FmTempSenRearLAvg,FmTempSenRearLMax,FmTempSenRearR,FmTempSenRearRAvg,FmTempSenRearRMax,Suspect
-        $DomainHash.System.Server_Temp | ForEach-Object {$_.Dn = $_.Dn -replace ('([/]board.*)',"") }
+        $DomainHash.System.Server_Temp | ForEach-Object {$_.Dn = $_.Dn -replace ('([/]board.*)',"")}
 
         #===================================#
         #    Start Inventory Collection        #
@@ -520,21 +477,17 @@ function Generate_Health_Check() {
             $fiHash.Operability = $fi.Operability
             $fiHash.Thermal = $fi.Thermal
             # Get leadership role and management service state
-            if($fi.Id -eq "A")
-            {
+            if($fi.Id -eq "A") {
                 $fiHash.Role = $system.FiALeadership
                 $fiHash.State = $system.FiAManagementServicesState
-            }
-            else
-            {
+            } else {
                 $fiHash.Role = $system.FiBLeadership
                 $fiHash.State = $system.FiAManagementServicesState
             }
 
             # Get the common name of the fi from the manufacturing definition and format the text
             $fiModel = ($EquipmentManDef | Where-Object  {$_.Sku -cmatch $($fi.Model)} | Select-Object Name).Name -replace "Cisco UCS ", ""
-            if($fiModel -is [array]) { $fiHash.Model = $fiModel.Item(0) -replace "Cisco UCS ", "" }
-            else { $fiHash.Model = $fiModel -replace "Cisco UCS ", "" }
+            if($fiModel -is [array]) {$fiHash.Model = $fiModel.Item(0) -replace "Cisco UCS ", ""} else {$fiHash.Model = $fiModel -replace "Cisco UCS ", ""}
 
 
             $fiHash.Serial = $fi.Serial
@@ -549,7 +502,7 @@ function Generate_Health_Check() {
             $ports_used = ($ucsLicense | Select-Object UsedQuant).UsedQuant
             if ($ports_used -is [system.array]) {
                 $ports_used_total = 0
-                $ports_used | ForEach-Object { $ports_used_total += $_ }
+                $ports_used | ForEach-Object {$ports_used_total += $_}
                 $fiHash.Ports_Used = $ports_used_total
                 Remove-Variable ports_used_total
             } else {
@@ -558,7 +511,7 @@ function Generate_Health_Check() {
             $ports_used_sub = ($ucsLicense | Select-Object SubordinateUsedQuant).SubordinateUsedQuant
             if ($ports_used_sub -and $ports_used_sub -is [system.array]) {
                 $ports_used_sub_total = 0
-                $ports_used_sub | ForEach-Object { $ports_used_sub_total += $_ }
+                $ports_used_sub | ForEach-Object {$ports_used_sub_total += $_}
                 $fiHash.Ports_Used += $ports_used_sub_total
                 Remove-Variable ports_used_sub_total
             } else {
@@ -569,7 +522,7 @@ function Generate_Health_Check() {
             $ports_licensed = ($ucsLicense | Select-Object AbsQuant).AbsQuant
             if ($ports_licensed -is [system.array]) {
                 $ports_licensed_total = 0
-                $ports_licensed | ForEach-Object { $ports_licensed_total += $_ }
+                $ports_licensed | ForEach-Object {$ports_licensed_total += $_}
                 $fiHash.Ports_Licensed = $ports_licensed_total
                 Remove-Variable ports_licensed_total
             } else {
@@ -598,13 +551,10 @@ function Generate_Health_Check() {
             $DomainHash.Inventory.FIs += $fiHash
 
             # Get FI Role and IP for system tab of report
-            if($fiHash.Fabric_Id -eq 'A')
-            {
+            if($fiHash.Fabric_Id -eq 'A') {
                 $DomainHash.System.FI_A_Role = $fiHash.Role
                 $DomainHash.System.FI_A_IP = $fiHash.IP
-            }
-            else
-            {
+            } else {
                 $DomainHash.System.FI_B_Role = $fiHash.Role
                 $DomainHash.System.FI_B_IP = $fiHash.IP
             }
@@ -760,8 +710,7 @@ function Generate_Health_Check() {
             $bladeHash.Service_Profile = $blade.AssignedToDn
 
             # If blade doesn't have a service profile set profile name to Unassociated
-            if(!($bladeHash.Service_Profile))
-            {
+            if(!($bladeHash.Service_Profile)) {
                 $bladeHash.Service_Profile = "Unassociated"
             }
             # Get blade child object for future iteration
@@ -781,8 +730,7 @@ function Generate_Health_Check() {
             $bladeHash.Board_Controller = ($childTargets | Where-Object {$_.Type -eq "board-controller"}).Version
 
             # Set Board Controller model to N/A if not present
-            if(!($bladeHash.Board_Controller))
-            {
+            if(!($bladeHash.Board_Controller)) {
                 $bladeHash.Board_Controller = 'N/A'
             }
             # Array variable for storing blade adapter data
@@ -889,33 +837,24 @@ function Generate_Health_Check() {
                 # Gets peer port information filtered to the current path for adapter and fex host port
                 $vifPeers = $paths | Where-Object {$_.EpDn -match ($vif.EpDn | Select-String -pattern ".*(?=(.*[/]){2})").Matches.Value -and $_.Dn -match ($vif.Dn | Select-String -pattern ".*(?=(.*[/]){3})").Matches.Value -and $_.Dn -ne $vif.Dn}
                 # If Adapter PortId is greater than 1000 then format string as a port channel
-                if($vifPeers[1].PeerPortId -gt 1000)
-                {
+                if($vifPeers[1].PeerPortId -gt 1000) {
                     $vifHash.Adapter_Port = 'PC-' + $vifPeers[1].PeerPortId
-                }
+                } else {
                 # Else format in slot/port notation
-                else
-                {
                     $vifHash.Adapter_Port = "$($vifPeers[1].PeerSlotId)/$($vifPeers[1].PeerPortId)"
                 }
                 # If FEX PortId is greater than 1000 then format string as a port channel
-                if($vifPeers[0].PortId -gt 1000)
-                {
+                if($vifPeers[0].PortId -gt 1000) {
                     $vifHash.Fex_Host_Port = 'PC-' + $vifPeers[0].PortId
-                }
+                } else {
                 # Else format in chassis/slot/port notation
-                else
-                {
                     $vifHash.Fex_Host_Port = "$($vifPeers[0].ChassisId)/$($vifPeers[0].SlotId)/$($vifPeers[0].PortId)"
                 }
                 # If Network PortId is greater than 1000 then format string as a port channel
-                if($vif.PortId -gt 1000)
-                {
+                if($vif.PortId -gt 1000) {
                     $vifHash.Fex_Network_Port = 'PC-' + $vif.PortId
-                }
+                } else {
                 # Else format in fabricId/slot/port notation
-                else
-                {
                     $vifHash.Fex_Network_Port = $vif.PortId
                 }
                 # Server Port for current path as formatted in UCSM
@@ -931,18 +870,13 @@ function Generate_Health_Check() {
                     $vcHash.vNic = $_.vNic
                     $vcHash.Link_State = $_.LinkState
                     # Check if the current circuit is pinned to a PC uplink
-                    if($_.OperBorderPortId -gt 0 -and $_.OperBorderSlotId -eq 0)
-                    {
+                    if($_.OperBorderPortId -gt 0 -and $_.OperBorderSlotId -eq 0) {
                         $vcHash.FI_Uplink = "$($_.SwitchId)/PC - $($_.OperBorderPortId)"
-                    }
+                    } elseif($_.OperBorderPortId -eq 0 -and $_.OperBorderSlotId -eq 0) {
                     # Check if the current circuit is unpinned
-                    elseif($_.OperBorderPortId -eq 0 -and $_.OperBorderSlotId -eq 0)
-                    {
-                        $vcHash.FI_Uplink = "unpinned"
-                    }
+                    $vcHash.FI_Uplink = "unpinned"
+                    } else {
                     # Assume that the circuit is pinned to a single uplink port
-                    else
-                    {
                         $vcHash.FI_Uplink = "$($_.SwitchId)/$($_.OperBorderSlotId)/$($_.OperBorderPortId)"
                     }
                     # Add current circuit data to loop array variable
@@ -979,8 +913,7 @@ function Generate_Health_Check() {
                     #        Level2 - Type, VNIC Name                            #
                     #        Level3 - Lun, Type, WWN                                #
                     #===========================================================#
-                    Switch ($entry.Type)
-                    {
+                    Switch ($entry.Type) {
                         # Matches either local media or SAN storage
                         'storage' {
                             # Get child data of boot entry for more detailed information
@@ -988,8 +921,7 @@ function Generate_Health_Check() {
                                 # Hash variable for storing current boot entry data
                                 $entryHash = @{}
                                 # Checks if current entry is a SAN target
-                                if($_.Rn -match "san")
-                                {
+                                if($_.Rn -match "san") {
                                     # Grab Level1 data
                                     $entryHash.Level1 = $entry | Select-Object Type,Order
                                     # Array for storing Level2 data
@@ -1006,10 +938,8 @@ function Generate_Health_Check() {
                                     $entryHash.Level2 += $sanHash
                                     # Add current boot entry data to boot hash
                                     $bootHash.Entries += $entryHash
-                                }
+                                } elseif($_.Rn -match "local-storage") {
                                 # Checks if current entry is a local storage target
-                                elseif($_.Rn -match "local-storage")
-                                {
                                     # Selects Level1 data
                                     $_ | Get-UcsChild | Sort-Object Order | ForEach-Object {
                                         $entryHash = @{}
@@ -1024,12 +954,9 @@ function Generate_Health_Check() {
                             $entryHash = @{}
                             # Get Level1 data plus Access type to determine device type
                             $entryHash.Level1 = $entry | Select-Object Type,Order,Access
-                            if ($entryHash.Level1.Access -match 'read-only')
-                            {
+                            if ($entryHash.Level1.Access -match 'read-only') {
                                 $entryHash.Level1.Type = 'CD/DVD'
-                            }
-                            else
-                            {
+                            } else {
                                 $entryHash.Level1.Type = 'Floppy'
                             }
                             $bootHash.Entries += $entryHash
@@ -1136,8 +1063,7 @@ function Generate_Health_Check() {
             $rackHash.UsrLbl = $rack.UsrLbl
             $rackHash.Name = $rack.Name
             # If no service profile exists set profile name to "Unassociated"
-            if(!($rackHash.Service_Profile))
-            {
+            if(!($rackHash.Service_Profile)) {
                 $rackHash.Service_Profile = "Unassociated"
             }
             # Get child objects for pulling detailed information
@@ -1154,8 +1080,7 @@ function Generate_Health_Check() {
             $rackHash.BIOS = (($childTargets | Where-Object {$_.Type -eq "blade-bios"}).Version -replace ('(?!(.*[.]){2}).*',"")).TrimEnd('.')
             $rackHash.CIMC = ($childTargets | Where-Object {$_.Type -eq "blade-controller" -and $_.Deployment -ieq "system"}).Version
             # Iterate through each server adapter and grab detailed information
-            foreach (${adapter} in ($rack | Get-UcsAdaptorUnit))
-            {
+            foreach (${adapter} in ($rack | Get-UcsAdaptorUnit)) {
                 $adapterHash = @{}
                 $adapterHash.Rack_Id = $rack.Id
                 $adapterHash.Slot = ${adapter}.PciSlot
@@ -1248,8 +1173,7 @@ function Generate_Health_Check() {
                     $vifHash.Fex_Host_Port = "N/A"
                     $vifHash.Fex_Network_Port = "N/A"
                     $vifHash.FI_Server_Port = "$($vif.SwitchId)/$($vif.SlotId)/$($vif.PortId)"
-                }
-                else {
+                } else {
                     $vifHash.Adapter_Port = "$($vifPeers[0].PeerSlotId)/$($vifPeers[1].PeerPortId)"
                     $vifHash.Fex_Host_Port = "$($vifPeers[1].ChassisId)/$($vifPeers[1].SlotId)/$($vifPeers[1].PortId)"
                     $vifHash.Fex_Network_Port = $vifPeers[0].PortId
@@ -1266,18 +1190,13 @@ function Generate_Health_Check() {
                     $vcHash.vNic = $_.vNic
                     $vcHash.Link_State = $_.LinkState
                     # Check if the current circuit is pinned to a PC uplink
-                    if($_.OperBorderPortId -gt 0 -and $_.OperBorderSlotId -eq 0)
-                    {
+                    if($_.OperBorderPortId -gt 0 -and $_.OperBorderSlotId -eq 0) {
                         $vcHash.FI_Uplink = "$($_.SwitchId)/PC - $($_.OperBorderPortId)"
-                    }
+                    } elseif($_.OperBorderPortId -eq 0 -and $_.OperBorderSlotId -eq 0) {
                     # Check if the current circuit is unpinned
-                    elseif($_.OperBorderPortId -eq 0 -and $_.OperBorderSlotId -eq 0)
-                    {
                         $vcHash.FI_Uplink = "unpinned"
-                    }
+                    } else {
                     # Assume that the circuit is pinned to a single uplink port
-                    else
-                    {
                         $vcHash.FI_Uplink = "$($_.SwitchId)/$($_.OperBorderSlotId)/$($_.OperBorderPortId)"
                     }
                     $vifHash.Circuits += $vcHash
@@ -1311,8 +1230,7 @@ function Generate_Health_Check() {
                     #        Level2 - Type, VNIC Name                            #
                     #        Level3 - Lun, Type, WWN                                #
                     #===========================================================#
-                    Switch ($entry.Type)
-                    {
+                    Switch ($entry.Type) {
                         # Matches either local media or SAN storage
                         'storage' {
                             # Get child data of boot entry for more detailed information
@@ -1320,8 +1238,7 @@ function Generate_Health_Check() {
                                 # Hash variable for storing current boot entry data
                                 $entryHash = @{}
                                 # Checks if current entry is a SAN target
-                                if($_.Rn -match "san")
-                                {
+                                if($_.Rn -match "san") {
                                     # Grab Level1 data
                                     $entryHash.Level1 = $entry | Select-Object Type,Order
                                     # Array for storing Level2 data
@@ -1338,10 +1255,8 @@ function Generate_Health_Check() {
                                     $entryHash.Level2 += $sanHash
                                     # Add current boot entry data to boot hash
                                     $bootHash.Entries += $entryHash
-                                }
+                                } elseif($_.Rn -match "local-storage") {
                                 # Checks if current entry is a local storage target
-                                elseif($_.Rn -match "local-storage")
-                                {
                                     # Selects Level1 data
                                     $_ | Get-UcsChild | Sort-Object Order | ForEach-Object {
                                         $entryHash = @{}
@@ -1356,12 +1271,9 @@ function Generate_Health_Check() {
                             $entryHash = @{}
                             # Get Level1 data plus Access type to determine device type
                             $entryHash.Level1 = $entry | Select-Object Type,Order,Access
-                            if ($entryHash.Level1.Access -match 'read-only')
-                            {
+                            if ($entryHash.Level1.Access -match 'read-only') {
                                 $entryHash.Level1.Type = 'CD/DVD'
-                            }
-                            else
-                            {
+                            } else {
                                 $entryHash.Level1.Type = 'floppy'
                             }
                             $bootHash.Entries += $entryHash
@@ -1509,8 +1421,7 @@ function Generate_Health_Check() {
                 #        Level2 - Type, VNIC Name                            #
                 #        Level3 - Lun, Type, WWN                                #
                 #===========================================================#
-                Switch ($entry.Type)
-                {
+                Switch ($entry.Type) {
                     # Matches either local media or SAN storage
                     'storage' {
                         # Get child data of boot entry for more detailed information
@@ -1518,8 +1429,7 @@ function Generate_Health_Check() {
                             # Hash variable for storing current boot entry data
                             $entryHash = @{}
                             # Checks if current entry is a SAN target
-                            <#if($_.Rn -match "san")
-                            {
+                            <#if($_.Rn -match "san") {
                                 # Grab Level1 data
                                 $entryHash.Level1 = $entry | Select-Object Type,Order
                                 # Array for storing Level2 data
@@ -1539,8 +1449,7 @@ function Generate_Health_Check() {
                             }
                             #>
                             # Checks if current entry is a local storage target
-                            if($_.Rn -match "local-storage")
-                            {
+                            if($_.Rn -match "local-storage") {
                                 # Selects Level1 data
                                 $_ | Get-UcsChild | Sort-Object Order | ForEach-Object {
                                     $entryHash = @{}
@@ -1554,12 +1463,9 @@ function Generate_Health_Check() {
                     'virtual-media' {
                         $entryHash = @{}
                         $entryHash.Level1 = $entry | Select-Object Type,Order,Access
-                        if ($entryHash.Level1.Access -match 'read-only')
-                        {
+                        if ($entryHash.Level1.Access -match 'read-only') {
                             $entryHash.Level1.Type = 'CD/DVD'
-                        }
-                        else
-                        {
+                        } else {
                             $entryHash.Level1.Type = 'floppy'
                         }
                         $bootHash.Entries += $entryHash
@@ -1673,12 +1579,11 @@ function Generate_Health_Check() {
             # Unchanged copy of the current template name used later in the script
             # Find the profile template that matches the current name
             $template = $profiles | Where-Object {$_.Dn -eq "$templateDn"}
-            $templateName = If ($template) { $template.Name } Else {"Unbound"}
+            $templateName = If ($template) {$template.Name} Else {"Unbound"}
             # Hash variable to store data for current templateName
             $DomainHash.Profiles[$templateId] = @{}
             # Switch statement to format the template type
-            switch ($template.Type)
-            {
+            switch ($template.Type) {
                     "updating-template"    {$DomainHash.Profiles[$templateId].Type = "Updating"}
                     "initial-template"    {$DomainHash.Profiles[$templateId].Type = "Initial"}
                     default {$DomainHash.Profiles[$templateId].Type = "N/A"}
@@ -1823,14 +1728,11 @@ function Generate_Health_Check() {
                 $profileHash.General.Template_Instance = $sp.OperSrcTemplName
                 $profileHash.General.Assignment = @{}
                 $pool = $sp | Get-UcsServerPoolAssignment
-                if($pool.Count -gt 0)
-                {
+                if($pool.Count -gt 0) {
                     $profileHash.General.Assignment.Server_Pool = $pool.Name
                     $profileHash.General.Assignment.Qualifier = $pool.Qualifier
                     $profileHash.General.Assignment.Restrict_Migration = $pool.RestrictMigration
-                }
-                else
-                {
+                } else {
                     $lsServer = $sp | Get-UcsLsBinding
                     $profileHash.General.Assignment.Server = $lsServer.AssignedToDn
                     $profileHash.General.Assignment.Restrict_Migration = $lsServer.RestrictMigration
@@ -1904,15 +1806,13 @@ function Generate_Health_Check() {
                 # Service Profile Details - Performance
                 $profileHash.Performance = @{}
                 # Only grab performance data if the profile is associated
-                if($profileHash.Assoc_State -eq 'associated')
-                {
+                if($profileHash.Assoc_State -eq 'associated') {
                     # Get the collection time interval for adapter performance
                     $interval = (Get-UcsCollectionPolicy -Name "adapter" | Select-Object CollectionInterval).CollectionInterval
                     # Normalize collection interval to seconds
-                    Switch -wildcard (($interval -split '[0-9]')[-1])
-                    {
-                        "minute*" { $profileHash.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int]) * 60 }
-                        "second*" { $profileHash.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int]) }
+                    Switch -wildcard (($interval -split '[0-9]')[-1]) {
+                        "minute*" {$profileHash.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int]) * 60}
+                        "second*" {$profileHash.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int])}
                     }
                     $profileHash.Performance.vNics = @{}
                     $profileHash.Performance.vHbas = @{}
@@ -1950,10 +1850,9 @@ function Generate_Health_Check() {
         $DomainHash.Collection = @{}
         $interval = (Get-UcsCollectionPolicy -Name "port" | Select-Object CollectionInterval).CollectionInterval
         # Normalize collection interval to seconds
-        Switch -wildcard (($interval -split '[0-9]')[-1])
-        {
-            "minute*" { $DomainHash.Collection.Port = ((($interval -split '[a-z]')[0]) -as [int]) * 60 }
-            "second*" { $DomainHash.Collection.Port = ((($interval -split '[a-z]')[0]) -as [int]) }
+        Switch -wildcard (($interval -split '[0-9]')[-1]) {
+            "minute*" {$DomainHash.Collection.Port = ((($interval -split '[a-z]')[0]) -as [int]) * 60}
+            "second*" {$DomainHash.Collection.Port = ((($interval -split '[a-z]')[0]) -as [int])}
         }
         # Uplink and Server Ports with Performance
         $DomainHash.Lan.UplinkPorts = @()
@@ -2217,11 +2116,9 @@ function Generate_Health_Check() {
         $Process_Hash.Progress[$domain] = 84
         # Grab faults of critical, major, minor, and warning severity sorted by severity
         $faultList = Get-UcsFault -Ucs $handle -Filter 'Severity -cmatch "critical|major|minor|warning"' | Sort-Object -Property Ucs,Severity | Select-Object Ucs,Severity,Created,Descr,dn
-        if($faultList)
-        {
+        if($faultList) {
             # Iterate through each fault and grab information
-            foreach ($fault in $faultList)
-            {
+            foreach ($fault in $faultList) {
                 $faultHash = @{}
                 $faultHash.Severity = $fault.Severity;
                 $faultHash.Descr = $fault.Descr
@@ -2262,21 +2159,22 @@ function Generate_Health_Check() {
         # Monitor each job progress and update write-progress
         $Progress = 0
         # Catch conditions where no script progress has occurred
-        try{
+        try {
             # Iterate through each process and add progress divided by process count
             $Process_Hash.Progress.GetEnumerator() | ForEach-Object {
                 $Progress += ($_.Value / $Process_Hash.Progress.Count)
             }
         }
-        catch
-        {
-        }
+        catch {}
+
         # Write Progress to alert user of overall progress
         Write-Progress -Activity "Health Report in Progress..." `
             -PercentComplete $progress `
             -CurrentOperation "$progress% complete" `
             -Status "Data Collection can take several minutes"
+
         $more = $false
+
         # Iterate through each runspace in progress
         Foreach($runspace in $runspaces) {
             # If runspace is complete cleanly end/exit runspace
@@ -2289,15 +2187,13 @@ function Generate_Health_Check() {
                 $more = $true
             }
         }
+
         # Sleep for 100ms before updating progress
-        If ($more) {
-            Start-Sleep -Milliseconds 100
-        }
+        If ($more) {Start-Sleep -Milliseconds 100}
+
         # Clean out unused runspace jobs
         $temphash = $runspaces.clone()
-        $temphash | Where-Object {
-            $Null -eq $_.runspace
-        } | ForEach-Object {
+        $temphash | Where-Object {$Null -eq $_.runspace} | ForEach-Object {
             Write-Verbose ("Removing {0}" -f $_.computer)
             $Runspaces.remove($_)
         }
@@ -2310,40 +2206,36 @@ function Generate_Health_Check() {
     # End collection script
 
     # Start HTML report generation
-
     # Import template file to memory
     $ReportRawText = Get-Content ./Report_Template.htm
+
     # Convert hash table to JSON
     $ReportData = $Process_Hash.Domains | ConvertTo-JSON -Depth 14 -Compress
+
     # Replace date and JSON placeholders with real data
     $ReportRawText = $ReportRawText.Replace('DATE_REPLACE',(Get-Date -format MM/dd/yyyy))
     $ReportRawText = $ReportRawText.Replace('{"_comment": "placeholder"}', $ReportData)
+
     # Save configuration report to file
     Set-Content -Path $OutputFile -Value $ReportRawText
 
     # Email Report if Email switch is set or Email_Report is set
-    if ($Email_Report -or $Email)
-    {
+    if ($Email_Report -or $Email) {
         $msg = new-object Net.Mail.MailMessage
         $att = new-object Net.Mail.Attachment(resolve-path $OutputFile)
         $smtp = new-object Net.Mail.SmtpClient($smtpServer)
+
+        if($Email) {$msg.To.Add($Email)} else {$msg.To.Add($mailto)}
         $msg.From = $mailfrom
-        if($Email)
-        {
-            $msg.To.Add($Email)
-        }
-        else
-        {
-            $msg.To.Add($mailto)
-        }
         $msg.Subject = "Cisco UCS Health Check"
         $msg.Body = "Cisco UCS Health Check, open the attached HTML file to view the report."
         $msg.Attachments.Add($att)
         $smtp.Send($msg)
     }
+
     # Write elapsed time to user
     Write-host "Total Elapsed Time: $(&$GetElapsedTime $start)"
-    if(-Not $Silent) { Read-Host "Health Check Complete.  Press any key to continue" }
+    if(-Not $Silent) {Read-Host "Health Check Complete.  Press any key to continue"}
 }
 
 function Exit_Program() {
@@ -2351,10 +2243,8 @@ function Exit_Program() {
     .DESCRIPTION
         Disconnects all UCS Domains and exits the script
     #>
-    foreach    ($Domain in $UCS.get_keys())
-    {
-        if(HandleExists($UCS[$Domain]))
-        {
+    foreach ($Domain in $UCS.get_keys()) {
+        if(HandleExists($UCS[$Domain])) {
             Write-Host "Disconnecting $($UCS[$Domain].Name)..."
             Disconnect-Ucs -Ucs $UCS[$Domain].Handle
             $script:UCS[$Domain].Remove("Handle")
@@ -2378,30 +2268,23 @@ function Check_Modules() {
 
 # === Main ===
 # Ensures cached credentials are passed for automated execution
-if($UseCached -eq $false -and $RunReport -eq $true)
-{
+if($UseCached -eq $false -and $RunReport -eq $true) {
     Write-Host "`nCached Credentials must be specified to run report (-UseCached)`n`n"
     exit
 }
 # Loads cached ucs credentials from current directory
-if($UseCached)
-{
-    If(Test-Path "$((Get-Location).Path)\ucs_cache.ucs")
-    {
+if($UseCached) {
+    If(Test-Path "$((Get-Location).Path)\ucs_cache.ucs") {
         Connect_Ucs
-    }
-    else
-    {
+    } else {
         Write-Host "`nCache File not found at $((Get-Location).Path)\ucs_cache.ucs`n`n"
         exit
     }
 }
 # Automates health check report execution if RunReport switch is passed
-If($UseCached -and $RunReport)
-{
+If($UseCached -and $RunReport) {
     Generate_Health_Check
-    if($Silent)
-    {
+    if($Silent) {
         Exit_Program
         exit
     }
@@ -2411,24 +2294,24 @@ Check_Modules
 
 # Main Menu
 $main_menu = "
-        Menu
+        MAIN MENU
 
-1. Connect/Disconnect UCS Domains
-2. Generate UCS Health Check Report
-Q. Exit Program
+    1. Connect/Disconnect UCS Domains
+    2. Generate UCS Health Check Report
+    Q. Exit Program
 "
 :menu
-while ($true)
-{
+while ($true) {
     Clear-Host
     Write-Host $main_menu
     $command = Read-Host "Enter Command Number"
-    Switch ($Command)
-    {
+    Switch ($Command) {
         # Connect to UCS domains
-        1 {    Connection_Mgmt    }
+        1 {Connection_Mgmt}
+
         # Run UCS Health Check Report
-        2 { Generate_Health_Check }
+        2 {Generate_Health_Check}
+
         # Cleanly exit program
         'q' {
             Exit_Program
