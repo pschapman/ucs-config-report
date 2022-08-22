@@ -3,7 +3,7 @@
 - [x] Fix known bugs in existing 2.6 version
 - [ ] Add reporting for the following use cases
   - [x] FC Storage Ports
-  - [ ] Standard and FCOE Appliance Ports
+  - [x] Standard and FCOE Appliance Ports
   - [ ] Port Channels
   - [ ] Disjoint L2
 - [x] Separate HTML report template (including CSS and JScript) to ease updates

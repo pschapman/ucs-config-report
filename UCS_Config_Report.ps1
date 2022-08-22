@@ -1101,9 +1101,14 @@ function Generate_Health_Check() {
                 $memHash = @{}
                 $memHash.Name = "Memory " + $_.Id
                 $memHash.Location = $_.Location
-                # Format DIMM capacity in GB
-                $memHash.Capacity = ($_.Capacity)/1024
-                $memHash.Clock = $_.Clock
+                if ($_.Capacity -like "unspecified") {
+                    $memHash.Capacity = "empty"
+                    $memHash.Clock = "empty"
+                } else {
+                    # Format DIMM capacity in GB
+                    $memHash.Capacity = ($_.Capacity)/1024
+                    $memHash.Clock = $_.Clock
+                }
                 $rackHash.Memory_Array += $memHash
             }
 
