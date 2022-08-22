@@ -1,14 +1,14 @@
 # Under Development
 ## Objectives
-- Fix known bugs in existing 2.6 version
+- Fix known bugs in existing 2.6 version - **Complete**
 - Add reporting for the following use cases
-  - FC Storage Ports
+  - FC Storage Ports - **Complete**
   - Standard and FCOE Appliance Ports
   - Port Channels
   - Disjoint L2
-- Separate HTML report template (including CSS and JScript) to ease updates
+- Separate HTML report template (including CSS and JScript) to ease updates - **Complete**
 - Improve performance
-- Change minimum PowerShell version to 5
+- Change minimum PowerShell version to 5 - **Complete**
 - Apply Python style coding practices according to [The PowerShell Style Guide](https://github.com/PoshCode/PowerShellPracticeAndStyle/blob/master/Style-Guide/Introduction.md)
 - Refactor where possible to make code more DRY and readable
 
