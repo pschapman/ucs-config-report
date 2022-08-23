@@ -1,5 +1,3 @@
-[TOC]
-
 # Cisco UCS Configuration Report
 ## Synopsis
 This script generates an HTML report showing all key configuration points on a Cisco UCS domain that is managed by UCS Manager (vs. Cisco Intersight).
