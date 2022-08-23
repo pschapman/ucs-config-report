@@ -15,6 +15,7 @@ This script requires both:
   - Available via PowerShell Gallery or direct download in PS using NuGet package provider
 
 **Apple Mac:** Review [Microsoft KB Article][1] for installation of PowerShell.
+**Linux:** Review [Microsoft KB Article][6] for installation of PowerShell.
 
 ## Git Branches
 The current stable version will always be in the master branch.
@@ -36,7 +37,7 @@ The current stable version will always be in the master branch.
          1. `Set-ExecutionPolicy -Unrestricted`
       7. Verify new module has been properly loaded.
          1. `Import-Module Cisco.UCSManager`
-   2. **Mac (Internet Required)**:
+   2. **Mac / Linux (Internet Required)**:
       1. Update PowerShell Help
          1. `Update-Help -Force -ErrorAction SilentlyContinue`
       2. Install UCS Power Tools from Internet Repository (NuGet)
@@ -60,7 +61,7 @@ The current stable version will always be in the master branch.
    1. Select a location and file name for the report
 6. Select option Q on the Main Menu to exit the program (automatically disconnects from UCS domain)
 
-#### Automated or Apple Mac
+#### Automated or Apple Mac / Linux
 1. Create a Credential Cache File
    1. At a PowerShell prompt run `UCS_Config_Report.ps1`
    2. Select option 1 on the Main Menu to manage domain connections
@@ -99,6 +100,7 @@ The current stable version will always be in the master branch.
 [3]: https://github.com/PoshCode/PowerShellPracticeAndStyle/blob/master/Style-Guide/Introduction.md
 [4]: https://github.com/datacenter/ucs-browser
 [5]: https://community.cisco.com/t5/unified-computing-system-knowledge-base/ucs-healthcheck-v2-5/ta-p/3654629
+[6]: https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-linux?view=powershell-7.2
 [i001]: https://github.com/pschapman/ucs-config-report/issues/1
 [i002]: https://github.com/pschapman/ucs-config-report/issues/2
 [i003]: https://github.com/pschapman/ucs-config-report/issues/3
