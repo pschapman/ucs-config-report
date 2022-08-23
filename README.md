@@ -15,6 +15,7 @@ This script requires both:
   - Available via PowerShell Gallery or direct download in PS using NuGet package provider
 
 **Apple Mac:** Review [Microsoft KB Article][1] for installation of PowerShell.
+
 **Linux:** Review [Microsoft KB Article][6] for installation of PowerShell.
 
 ## Git Branches
