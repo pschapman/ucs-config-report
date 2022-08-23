@@ -82,7 +82,7 @@ The current stable version will always be in the master branch.
     - Silent operation will save report files to script folder
 - Code Revisions
   - Fixed Issues 2, 3, & 4 in the [parent code base][4]
-  - Fixed discovered issues #1, #2, #3, #4, and #5 found during initial code cleanup
+  - Fixed discovered issues [#1][i001], [#2][i002], [#3][i003], [#4][i004], and [#5][i005] found during initial code cleanup
   - Switched functions and script to Documentation Strings for PS
   - Linted with VSCode and resolved all reported issues.
 
@@ -99,3 +99,8 @@ The current stable version will always be in the master branch.
 [3]: https://github.com/PoshCode/PowerShellPracticeAndStyle/blob/master/Style-Guide/Introduction.md
 [4]: https://github.com/datacenter/ucs-browser
 [5]: https://community.cisco.com/t5/unified-computing-system-knowledge-base/ucs-healthcheck-v2-5/ta-p/3654629
+[i001]: https://github.com/pschapman/ucs-config-report/issues/1
+[i002]: https://github.com/pschapman/ucs-config-report/issues/2
+[i003]: https://github.com/pschapman/ucs-config-report/issues/3
+[i004]: https://github.com/pschapman/ucs-config-report/issues/4
+[i005]: https://github.com/pschapman/ucs-config-report/issues/5
