@@ -1,31 +1,29 @@
-# Under Development
-## Objectives
-- [x] Fix known bugs in existing 2.6 version
-- [ ] Add reporting for the following use cases
-  - [x] FC Storage Ports
-  - [x] Standard and FCOE Appliance Ports
-  - [ ] Port Channels
-  - [ ] Disjoint L2
-- [x] Separate HTML report template (including CSS and JScript) to ease updates
-- [ ] Improve performance
-- [x] Change minimum PowerShell version to 5
-- [ ] Apply Python style coding practices according to [The PowerShell Style Guide](https://github.com/PoshCode/PowerShellPracticeAndStyle/blob/master/Style-Guide/Introduction.md)
-- [ ] Refactor where possible to make code more DRY and readable
+[TOC]
 
-This version will be "UCS Configuration Report" and no longer "UCS Health Check" and will diverge from the originally produced Cisco version.
+# Cisco UCS Configuration Report
+## Synopsis
+This script generates an HTML report showing all key configuration points on a Cisco UCS domain that is managed by UCS Manager (vs. Cisco Intersight).
 
-## UCS Health Check and Inventory Script (ported from UCS Communities)
-See original [README](https://github.com/datacenter/ucs-browser)
+## Acknowledgement
+This project was forked from code written by Brandon Beck (Cisco) and ported to [GitHub][4] from an original [Cisco Community Post][5].
+
+## Prerequisites
+This script requires both:
+- PowerShell 5 or later
+  - Check version with command: `$PSVersionTable`
+  - For systems with older PS version, upgrade the Windows Management Framework
+- Cisco UCS PowerTool Suite 3 or later
+  - If installed, check version with command: `Get-Module -ListAvailable -Name Cisco.UCSManager | select Name,Version`
+  - Available via PowerShell Gallery or direct download in PS using NuGet package provider
+
+**Apple Mac:** Review [Microsoft KB Article][1] for installation of PowerShell.
+
+## Git Branches
+The current stable version will always be in the master branch.
 
 ## Procedures
-### PowerShell Configuration
-1. Verify PowerShell 5 or higher is installed on the management station (`$PSVersionTable`)
-   1. **Windows**
-      1. Issue command: `$PSVersionTable`
-      2. If below 5, then install latest management pack
-   2. **Mac**
-      1. Review [Microsoft KB Article][1] for prerequisites.
-2. Install UCS Power Tool (Check with `Get-Module -ListAvailable -Name Cisco.UCSManager | select Name,Version`)
+### Setup
+1. Install UCS Power Tool (Check with `Get-Module -ListAvailable -Name Cisco.UCSManager | select Name,Version`)
    1. **Windows (Internet Required) (Run as Administrator Required)**:
       1. Update PowerShell Help
          1. `Update-Help -Force -ErrorAction SilentlyContinue`
@@ -47,7 +45,59 @@ See original [README](https://github.com/datacenter/ucs-browser)
          1. `Install-Module Cisco.UCSManager`
       3. Verify new module has been properly loaded.
          1. `Import-Module Cisco.UCSManager`
+2. Download Cisco UCS Configuration Report project from GitHub (your choice)
+   - Direct browser download
+   - Git CLI: `git clone https://github.com/pschapman/ucs-config-report.git`
+
+**NOTE:** UCS_Config_Report.ps1 and Report_Template.htm are mandatory files and must be in the same directory.
+
+### Creating Reports
+#### Manual (Windows)
+1. At a PowerShell prompt run `UCS_Config_Report.ps1`
+2. Select option 1 on the Main Menu to manage domain connections
+3. Select option 1 on the Connection Management Menu to connect to a UCS domain
+   1. Input IP/FQDN and credentials as prompted
+4. Select option 7 on the Connection Management Menu to return to the Main Menu
+5. Select option 2 on the Main Menu to create a report
+   1. Select a location and file name for the report
+6. Select option Q on the Main Menu to exit the program (automatically disconnects from UCS domain)
+
+#### Automated or Apple Mac
+1. Create a Credential Cache File
+   1. At a PowerShell prompt run `UCS_Config_Report.ps1`
+   2. Select option 1 on the Main Menu to manage domain connections
+   3. Select option 1 on the Connection Management Menu to connect to a UCS domain
+      1. Input IP/FQDN and credentials as prompted
+   4. Select option 3 on the Connection Management Menu to save credentials
+   5. Select option 7 on the Connection Management Menu to return to the Main Menu
+   6. Select option Q on the Main Menu to exit the program
+2. At the PowerShell prompt run the script with arguments
+   1. `./UCS_Config_Report.ps1 -UseCached -RunReport -Silent`
+3. (Optional) Configure Scheduled Task (Windows) or cron job (Mac) to run the script on a regular basis
+
+## What's New
+**Version 4.0 - 8/22/2022**
+- New Features
+  - Empty memory slots now show as "empty" instead of "undefined/indeterminate". [Screenshot](DocImages/EmptyMemorySlots.png)
+  - FC Storage Ports, FCOE Ports, and Appliance Ports now properly reported under the SAN tab. Added column to distinguish interface roles (e.g., network, server, storage). [Screenshot](DocImages/NewSANReporting.png)
+  - File Save dialog box (Windows) now defaults to the Desktop folder for output and offers a pre-created file name. [Screenshot](DocImages/FileSaveDialog.png)
+    - Silent operation will save report files to script folder
+- Code Revisions
+  - Fixed Issues 2, 3, & 4 in the [parent code base][4]
+  - Fixed discovered issues #1, #2, #3, #4, and #5 found during initial code cleanup
+  - Switched functions and script to Documentation Strings for PS
+  - Linted with VSCode and resolved all reported issues.
+
+## Update Objectives in Progress
+- [ ] Improve performance
+- [ ] Apply Python style coding practices according to [The PowerShell Style Guide][3]
+- [ ] Refactor where possible to make code more DRY and readable
+- [ ] Add reporting for the following use cases
+  - [ ] Port Channels
+  - [ ] Disjoint L2
 
 [1]: https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-macos?view=powershell-7.2
-
 [2]: https://kb.vmware.com/s/article/59235
+[3]: https://github.com/PoshCode/PowerShellPracticeAndStyle/blob/master/Style-Guide/Introduction.md
+[4]: https://github.com/datacenter/ucs-browser
+[5]: https://community.cisco.com/t5/unified-computing-system-knowledge-base/ucs-healthcheck-v2-5/ta-p/3654629
