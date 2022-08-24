@@ -28,7 +28,7 @@ Run Script with no interaction and email report. UCS cache file must be populate
 task.
 
 .NOTES
-Version: 4.0
+Version: 4.1
 Attributions::
     Author: Paul S. Chapman (pchapman@convergeone.com) 08/20/2022
     History: UCS Configuration Report forked from UCS Health Check v2.6
@@ -51,12 +51,15 @@ Param(
 
 # Global Variable Definition
 # ==========================
-
 $UCS = @{}                              # Hash variable for storing UCS handles
 $UCS_Creds = @{}                        # Hash variable for storing UCS domain credentials
 $runspaces = $null                      # Runspace pool for simultaneous code execution
 $dflt_output_path = [System.Environment]::GetFolderPath('Desktop') # Default output path. Alternate: $pwd
 $Silent_FileName = "UCS_Report_$(Get-Date -format MM_dd_yyyy_HH_mm_ss).html"     # Filename of report when running in silent execution
+
+# Determine script platform
+# ==========================
+If ($PSVersionTable.PSVersion.Major -ge '6') {$platform = $PSVersionTable.Platform} else {$platform = 'Windows'}
 
 # Email Variables
 # =========================================================
@@ -346,7 +349,7 @@ Function Get-SaveFile($initialDirectory) {
     if ($user_action -eq 'OK') {
         $file_name = $SaveFileDialog.filename
     } else {
-        Write-Host "DIALOG BOX CANCELED!! Sending output to script folder."
+        Write-Host "DIALOG BOX CANCELED!! Sending output to script directory."
         $file_name = "./$($Silent_FileName)"
         Start-Sleep(3)
     }
@@ -379,6 +382,9 @@ function Generate_Health_Check() {
 
     if($Silent) {
         $OutputFile = $Silent_Path + $Silent_FileName
+    } elseif ($platform -notmatch 'Windows') {
+        Write-Host "Platform is $($platform).  Cannot use Dialog Box. Sending output to script directory."
+        $OutputFile = $Silent_Path + $Silent_FileName
     } else {
         # Grab filename for the report
         $OutputFile = Get-SaveFile($dflt_output_path)
@@ -401,6 +407,13 @@ function Generate_Health_Check() {
     # Pseudo-function in ScriptBlock format called for each UCS domain
     $GetUcsData = {
         Param ($domain, $Process_Hash)
+
+        function DoSomething {
+            param (
+                $param1
+            )
+            Write-Host "hello world"
+        }
 
         # Set Job Progress to 0 and connect to the UCS domain passed
         $Process_Hash.Progress[$domain] = 0;
@@ -2174,10 +2187,10 @@ function Generate_Health_Check() {
         catch {}
 
         # Write Progress to alert user of overall progress
-        Write-Progress -Activity "Health Report in Progress..." `
+        Write-Progress -Activity "Collecting Report Data..." `
             -PercentComplete $progress `
             -CurrentOperation "$progress% complete" `
-            -Status "Data Collection can take several minutes"
+            -Status "This will take several minutes"
 
         $more = $false
 
