@@ -69,6 +69,40 @@ $mail_from = ""          # Example: "Cisco UCS Healtcheck <user@domain.tld>"
 $test_mail_flag = $false # Boolean - Enable for testing without CLI argument
 $test_mail_to = ""       # Example: "user@domain.tld"
 
+function Show-MainMenu {
+    <#
+    .DESCRIPTION
+        Text driven menu interface for connecting to UCS domains or running reports.
+    #>
+    # Main Menu
+    $main_menu = "
+            MAIN MENU
+
+        1. Connect/Disconnect UCS Domains
+        2. Generate UCS Health Check Report
+        Q. Exit Program
+    "
+    :menu
+    while ($true) {
+        Clear-Host
+        Write-Host $main_menu
+        $command = Read-Host "Enter Command Number"
+        Switch ($Command) {
+            # Connect to UCS domains
+            1 {Show-CnxnMgmtMenu}
+
+            # Run UCS Health Check Report
+            2 {Generate_Health_Check}
+
+            # Cleanly exit program
+            'q' {
+                Disconnect-AllUcsDomains
+                break menu
+            }
+        }
+    }
+}
+
 function Test-UcsHandle ($Domain) {
     <#
     .DESCRIPTION
@@ -2319,30 +2353,6 @@ If($UseCached -and $RunReport) {
 # Check that required modules are present
 Test-RequiredPsModules
 
-# Main Menu
-$main_menu = "
-        MAIN MENU
+# Start the Main Menu
+Show-MainMenu
 
-    1. Connect/Disconnect UCS Domains
-    2. Generate UCS Health Check Report
-    Q. Exit Program
-"
-:menu
-while ($true) {
-    Clear-Host
-    Write-Host $main_menu
-    $command = Read-Host "Enter Command Number"
-    Switch ($Command) {
-        # Connect to UCS domains
-        1 {Show-CnxnMgmtMenu}
-
-        # Run UCS Health Check Report
-        2 {Generate_Health_Check}
-
-        # Cleanly exit program
-        'q' {
-            Disconnect-AllUcsDomains
-            break menu
-        }
-    }
-}
