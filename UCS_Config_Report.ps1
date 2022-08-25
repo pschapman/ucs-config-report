@@ -2187,10 +2187,13 @@ function Generate_Health_Check() {
         catch {}
 
         # Write Progress to alert user of overall progress
-        Write-Progress -Activity "Collecting Report Data..." `
-            -PercentComplete $progress `
-            -CurrentOperation "$progress% complete" `
-            -Status "This will take several minutes"
+        $cmd_args = @{
+            Activity = "Collecting Report Data. This will take several minutes."
+            Status = "$($Progress)% Complete"
+            PercentComplete = $Progress
+            CurrentOperation = "Additional info TBD."
+        }
+        Write-Progress @cmd_args
 
         $more = $false
 
