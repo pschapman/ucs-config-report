@@ -69,6 +69,43 @@ $mail_from = ""          # Example: "Cisco UCS Healtcheck <user@domain.tld>"
 $test_mail_flag = $false # Boolean - Enable for testing without CLI argument
 $test_mail_to = ""       # Example: "user@domain.tld"
 
+function Start-Main {
+    <#
+    .DESCRIPTION
+        Run pre-checks and go to menus or silent operation
+    #>
+    # Ensures cached credentials are passed for automated execution
+    if($UseCached -eq $false -and $RunReport -eq $true) {
+        Write-Host "`nCached Credentials must be specified to run report (-UseCached)`n`n"
+        exit
+    }
+
+    # Loads cached ucs credentials from current directory
+    if($UseCached) {
+        If(Test-Path "$((Get-Location).Path)\ucs_cache.ucs") {
+            Add-UcsHandleAndCreds
+        } else {
+            Write-Host "`nCache File not found at $((Get-Location).Path)\ucs_cache.ucs`n`n"
+            exit
+        }
+    }
+
+    # Check that required modules are present
+    Test-RequiredPsModules
+
+    # Automates health check report execution if RunReport switch is passed
+    If($UseCached -and $RunReport) {
+        Generate_Health_Check
+        if($Silent) {
+            Disconnect-AllUcsDomains
+            exit
+        }
+    }
+
+    # Start the Main Menu
+    Show-MainMenu
+}
+
 function Show-MainMenu {
     <#
     .DESCRIPTION
@@ -2328,31 +2365,6 @@ function Test-RequiredPsModules() {
 }
 
 # === Main ===
-# Ensures cached credentials are passed for automated execution
-if($UseCached -eq $false -and $RunReport -eq $true) {
-    Write-Host "`nCached Credentials must be specified to run report (-UseCached)`n`n"
-    exit
-}
-# Loads cached ucs credentials from current directory
-if($UseCached) {
-    If(Test-Path "$((Get-Location).Path)\ucs_cache.ucs") {
-        Add-UcsHandleAndCreds
-    } else {
-        Write-Host "`nCache File not found at $((Get-Location).Path)\ucs_cache.ucs`n`n"
-        exit
-    }
-}
-# Automates health check report execution if RunReport switch is passed
-If($UseCached -and $RunReport) {
-    Generate_Health_Check
-    if($Silent) {
-        Disconnect-AllUcsDomains
-        exit
-    }
-}
-# Check that required modules are present
-Test-RequiredPsModules
+Start-Main
 
-# Start the Main Menu
-Show-MainMenu
 
