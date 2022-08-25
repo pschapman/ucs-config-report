@@ -69,7 +69,7 @@ $mail_from = ""          # Example: "Cisco UCS Healtcheck <user@domain.tld>"
 $test_mail_flag = $false # Boolean - Enable for testing without CLI argument
 $test_mail_to = ""       # Example: "user@domain.tld"
 
-function HandleExists ($Domain) {
+function Test-UcsHandle ($Domain) {
     <#
     .DESCRIPTION
         Checks if the passed hash variable contains an active UCS handle.
@@ -86,7 +86,7 @@ function HandleExists ($Domain) {
     if (!$error) {return $true}
 }
 
-function HaveHandle () {
+function Confirm-AnyUcsHandle () {
     <#
     .DESCRIPTION
         Checks if any UCS handle exists in the global UCS hash variable
@@ -94,12 +94,12 @@ function HaveHandle () {
         [bool] - Existance of handle
     #>
     foreach ($Domain in $UCS.get_keys()) {
-        if(HandleExists($UCS[$Domain])) {return $true}
+        if(Test-UcsHandle($UCS[$Domain])) {return $true}
     }
     return $false
 }
 
-function Connect_Ucs() {
+function Add-UcsHandleAndCreds() {
     <#
     .DESCRIPTION
         Connects to a ucs domain either by interactive user prompts or using cached credentials if the UseCached
@@ -197,7 +197,7 @@ function Connect_Ucs() {
     }
 }
 
-function Connection_Mgmt() {
+function Show-CnxnMgmtMenu() {
     <#
     .DESCRIPTION
         Text driven menu interface for allowing users to connect, disconnect, and cache UCS domain information
@@ -218,12 +218,12 @@ function Connection_Mgmt() {
         Write-Host $conn_menu
         $option = Read-Host "Enter Command Number"
         Switch ($option) {
-            1 {Connect_Ucs}
+            1 {Add-UcsHandleAndCreds}
 
             # Print all active UCS handles to the screen
             2 {
                 Clear-Host
-                if(!(HaveHandle)) {
+                if(!(Confirm-AnyUcsHandle)) {
                     Read-Host "There are currently no connected UCS domains`n`nPress any key to continue"
                     break
                 }
@@ -231,7 +231,7 @@ function Connection_Mgmt() {
                 Write-Host "`t`tActive Session List`n$("-"*60)"
                 foreach ($Domain in $UCS.get_keys()) {
                     # Checks if the UCS domain is active and prints a formatted list
-                    if(HandleExists($UCS[$Domain])) {
+                    if(Test-UcsHandle($UCS[$Domain])) {
                         # Composite format using -f method
                         "$($index)) {0,-28} {1,20}" -f $($UCS[$Domain].Name),$UCS[$Domain].VIP
                         $index++
@@ -265,7 +265,7 @@ function Connection_Mgmt() {
             # Text driven user interface for disconnecting from multiple UCS domains
             5 {
                 Clear-Host
-                if(!(HaveHandle)) {
+                if(!(Confirm-AnyUcsHandle)) {
                     Read-Host "There are currently no connected UCS domains`n`nPress any key to continue"
                     break
                 }
@@ -274,7 +274,7 @@ function Connection_Mgmt() {
                 Write-Host "`t`tActive Session List`n$("-"*60)"
                 # Creates a hash of all active domains and prints them in a list
                 foreach ($Domain in $UCS.get_keys()) {
-                    if(HandleExists($UCS[$Domain])) {
+                    if(Test-UcsHandle($UCS[$Domain])) {
                         # Composite format using -f method
                         "{0,-28} {1,20}" -f "$index) $($UCS[$Domain].Name)",$UCS[$Domain].VIP
                         $target.add($index, $UCS[$Domain].Name)
@@ -301,13 +301,13 @@ function Connection_Mgmt() {
             # Disconnects all UCS domain handles
             6 {
                 Clear-Host
-                if(!(HaveHandle)) {
+                if(!(Confirm-AnyUcsHandle)) {
                     Read-Host "There are currently no connected UCS domains`n`nPress any key to continue"
                     break
                 }
                 $target = @()
                 foreach    ($Domain in $UCS.get_keys()) {
-                    if(HandleExists($UCS[$Domain])) {
+                    if(Test-UcsHandle($UCS[$Domain])) {
                         Write-Host "Disconnecting $($UCS[$Domain].Name)..."
                         Disconnect-Ucs -Ucs $UCS[$Domain].Handle
                         $target += $UCS[$Domain].Name
@@ -362,7 +362,7 @@ function Generate_Health_Check() {
         Function for creating the html health check report for all of the connected UCS domains
     #>
     # Check to ensure an active UCS handle exists before generating the report
-    if(!(HaveHandle)) {
+    if(!(Confirm-AnyUcsHandle)) {
         Read-Host "There are currently no connected UCS domains`n`nPress any key to continue"
         return
     }
@@ -2265,13 +2265,13 @@ function Generate_Health_Check() {
     if(-Not $Silent) {Read-Host "Health Check Complete.  Press any key to continue"}
 }
 
-function Exit_Program() {
+function Disconnect-AllUcsDomains() {
     <#
     .DESCRIPTION
         Disconnects all UCS Domains and exits the script
     #>
     foreach ($Domain in $UCS.get_keys()) {
-        if(HandleExists($UCS[$Domain])) {
+        if(Test-UcsHandle($UCS[$Domain])) {
             Write-Host "Disconnecting $($UCS[$Domain].Name)..."
             Disconnect-Ucs -Ucs $UCS[$Domain].Handle
             $script:UCS[$Domain].Remove("Handle")
@@ -2281,7 +2281,7 @@ function Exit_Program() {
     Write-Host "Exiting Program`n"
 }
 
-function Check_Modules() {
+function Test-RequiredPsModules() {
     <#
     .DESCRIPTION
         Function that checks that all required powershell modules are present
@@ -2302,7 +2302,7 @@ if($UseCached -eq $false -and $RunReport -eq $true) {
 # Loads cached ucs credentials from current directory
 if($UseCached) {
     If(Test-Path "$((Get-Location).Path)\ucs_cache.ucs") {
-        Connect_Ucs
+        Add-UcsHandleAndCreds
     } else {
         Write-Host "`nCache File not found at $((Get-Location).Path)\ucs_cache.ucs`n`n"
         exit
@@ -2312,12 +2312,12 @@ if($UseCached) {
 If($UseCached -and $RunReport) {
     Generate_Health_Check
     if($Silent) {
-        Exit_Program
+        Disconnect-AllUcsDomains
         exit
     }
 }
 # Check that required modules are present
-Check_Modules
+Test-RequiredPsModules
 
 # Main Menu
 $main_menu = "
@@ -2334,14 +2334,14 @@ while ($true) {
     $command = Read-Host "Enter Command Number"
     Switch ($Command) {
         # Connect to UCS domains
-        1 {Connection_Mgmt}
+        1 {Show-CnxnMgmtMenu}
 
         # Run UCS Health Check Report
         2 {Generate_Health_Check}
 
         # Cleanly exit program
         'q' {
-            Exit_Program
+            Disconnect-AllUcsDomains
             break menu
         }
     }
