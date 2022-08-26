@@ -55,7 +55,7 @@ $UCS = @{}                              # Hash variable for storing UCS handles
 $UCS_Creds = @{}                        # Hash variable for storing UCS domain credentials
 $runspaces = $null                      # Runspace pool for simultaneous code execution
 $dflt_output_path = [System.Environment]::GetFolderPath('Desktop') # Default output path. Alternate: $pwd
-$Silent_FileName = "UCS_Report_$(Get-Date -format MM_dd_yyyy_HH_mm_ss).html"     # Filename of report when running in silent execution
+$auto_filename = "UCS_Report_$(Get-Date -format MM_dd_yyyy_HH_mm_ss).html"     # Filename of report when running in silent execution
 
 # Determine script platform
 # ==========================
@@ -400,29 +400,43 @@ function Show-CnxnMgmtMenu {
     }
 }
 
-Function Get-SaveFile($initialDirectory) {
+Function Get-SaveFile {
     <#
     .DESCRIPTION
         Creates a Windows File Dialog to select the save file location. Offer default filename to user.
+    .PARAMETER $StartingFolder
+        Default folder to present to user upon opening Windows File Save Dialog box.
     .OUTPUTS
         [string] - User selected file or silent file in script directory
     #>
+    param (
+        [Parameter(Mandatory)]$StartingFolder
+    )
+    $auto_filename = "UCS_Report_$(Get-Date -format MM_dd_yyyy_HH_mm_ss).html"
     Clear-Host
-    Write-Host "Opening Windows Dialog Box..."
+    if ($platform -match "Windows" -and !$Silent) {
+        Write-Host "Opening Windows Dialog Box..."
 
-    $null = [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms")
-    $SaveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
-    $SaveFileDialog.initialDirectory = $initialDirectory
-    $SaveFileDialog.FileName = $Silent_FileName
-    $SaveFileDialog.filter = "HTML Document (*.html)| *.html"
-    $user_action =  $SaveFileDialog.ShowDialog()
+        $null = [System.Reflection.Assembly]::LoadWithPartialName("System.windows.forms")
+        $SaveFileDialog = New-Object System.Windows.Forms.SaveFileDialog
+        $SaveFileDialog.initialDirectory = $StartingFolder
+        $SaveFileDialog.FileName = $auto_filename
+        $SaveFileDialog.filter = "HTML Document (*.html)| *.html"
+        $user_action =  $SaveFileDialog.ShowDialog()
 
-    if ($user_action -eq 'OK') {
-        $file_name = $SaveFileDialog.filename
+        if ($user_action -eq 'OK') {
+            $file_name = $SaveFileDialog.filename
+        } else {
+            Write-Host "DIALOG BOX CANCELED!! Sending output to script folder."
+            $file_name = "./$($auto_filename)"
+            Start-Sleep 3
+        }
     } else {
-        Write-Host "DIALOG BOX CANCELED!! Sending output to script directory."
-        $file_name = "./$($Silent_FileName)"
-        Start-Sleep(3)
+        if (!$Silent) {
+            Write-Host "Platform is $($platform).  Cannot use Dialog Box. Sending output to script directory."
+            Start-Sleep 3
+        }
+        $file_name = "./$($auto_filename)"
     }
     return $file_name
 }
@@ -452,15 +466,8 @@ function Start-UcsDataGather {
         return
     }
 
-    if($Silent) {
-        $OutputFile = $Silent_Path + $Silent_FileName
-    } elseif ($platform -notmatch 'Windows') {
-        Write-Host "Platform is $($platform).  Cannot use Dialog Box. Sending output to script directory."
-        $OutputFile = $Silent_Path + $Silent_FileName
-    } else {
-        # Grab filename for the report
-        $OutputFile = Get-SaveFile($dflt_output_path)
-    }
+    # Grab filename for the report
+    $OutputFile = Get-SaveFile($dflt_output_path)
 
     Clear-Host
     Write-Host "Generating Report..."
