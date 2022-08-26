@@ -82,6 +82,10 @@ function Start-Main {
         exit
     }
 
+    # Check that required modules are present
+    Test-RequiredPsModules
+
+    # Run data gather in parallel iteration of script for asynchronous processing of multiple UCS domains
     if ($RunAsProcess) {
         Invoke-UcsDataGather -domain $Domain -Process_Hash $ProcessHash
         exit
@@ -96,9 +100,6 @@ function Start-Main {
             exit
         }
     }
-
-    # Check that required modules are present
-    Test-RequiredPsModules
 
     # Automates configuration report execution if RunReport switch is passed
     If($UseCached -and $RunReport) {
@@ -469,18 +470,7 @@ function Invoke-UcsDataGather {
     )
     # Set Job Progress to 0 and connect to the UCS domain passed
     $Process_Hash.Progress[$domain] = 0;
-    # if(@(Get-Module -ListAvailable | Where-Object {$_.Name -eq "CiscoUcsPs"}).Count -and (Get-Module | Where-Object {$_.Name -eq "CiscoUcsPS"}).Count -lt 1)
-    # {
-    #     Import-Module CiscoUcsPs -ErrorAction Stop
-    # }
-    # if(@(Get-Module -ListAvailable | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -and (Get-Module | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -lt 1)
-    # {
-    #     Import-Module Cisco.UCSManager -ErrorAction Stop
-    # }
 
-    if((Get-Module | Where-Object {$_.Name -eq "Cisco.UCSManager"}).Count -lt 1) {
-        Import-Module Cisco.UCSManager -ErrorAction Stop
-    }
     $handle = Connect-Ucs $Process_Hash.Creds[$domain].VIP -Credential $Process_Hash.Creds[$domain].Creds
 
     # Initialize DomainHash variable for this domain
