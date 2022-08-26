@@ -6,13 +6,13 @@
 
 .DESCRIPTION
 Script for polling multiple UCS Domains and creating an html report of the domain inventory, configuration, and
-overall health.  Internet access is required to view report due to CDN content pull for CSS and JavaScript.
+port statistics.  Internet access is required to view report due to CDN content pull for CSS and JavaScript.
 
 .PARAMETER UseCached
 Run script using 'ucs_cache.ucs' file to login to all cached UCS domains.
 
 .PARAMETER RunReport
-Go directly to generating a health check report. Prompts for report file name unless -Silent also included.
+Go directly to generating a configuration report. Prompts for report file name unless -Silent also included.
 
 .PARAMETER Silent
 Bypasses prompts and menus. Auto-names report as [UCS_Report_YY_MM_DD_hh_mm_ss.html]. Should be used with
@@ -64,7 +64,7 @@ If ($PSVersionTable.PSVersion.Major -ge '6') {$platform = $PSVersionTable.Platfo
 # Email Variables
 # =========================================================
 $mail_server = ""        # Example: "mxa-00239201.gslb.pphosted.com"
-$mail_from = ""          # Example: "Cisco UCS Healtcheck <user@domain.tld>"
+$mail_from = ""          # Example: "Cisco UCS Configuration Report<user@domain.tld>"
 # =========================================================
 $test_mail_flag = $false # Boolean - Enable for testing without CLI argument
 $test_mail_to = ""       # Example: "user@domain.tld"
@@ -93,9 +93,9 @@ function Start-Main {
     # Check that required modules are present
     Test-RequiredPsModules
 
-    # Automates health check report execution if RunReport switch is passed
+    # Automates configuration report execution if RunReport switch is passed
     If($UseCached -and $RunReport) {
-        Generate_Health_Check
+        Start-UcsDataGathering
         if($Silent) {
             Disconnect-AllUcsDomains
             exit
@@ -116,7 +116,7 @@ function Show-MainMenu {
             MAIN MENU
 
         1. Connect/Disconnect UCS Domains
-        2. Generate UCS Health Check Report
+        2. Generate UCS Configuration Report
         Q. Exit Program
     "
     :menu
@@ -128,8 +128,8 @@ function Show-MainMenu {
             # Connect to UCS domains
             1 {Show-CnxnMgmtMenu}
 
-            # Run UCS Health Check Report
-            2 {Generate_Health_Check}
+            # Run UCS Configuration Report
+            2 {Start-UcsDataGathering}
 
             # Cleanly exit program
             'q' {
@@ -157,7 +157,7 @@ function Test-UcsHandle ($Domain) {
     if (!$error) {return $true}
 }
 
-function Confirm-AnyUcsHandle () {
+function Confirm-AnyUcsHandle {
     <#
     .DESCRIPTION
         Checks if any UCS handle exists in the global UCS hash variable
@@ -170,7 +170,7 @@ function Confirm-AnyUcsHandle () {
     return $false
 }
 
-function Add-UcsHandleAndCreds() {
+function Add-UcsHandleAndCreds {
     <#
     .DESCRIPTION
         Connects to a ucs domain either by interactive user prompts or using cached credentials if the UseCached
@@ -268,7 +268,7 @@ function Add-UcsHandleAndCreds() {
     }
 }
 
-function Show-CnxnMgmtMenu() {
+function Show-CnxnMgmtMenu {
     <#
     .DESCRIPTION
         Text driven menu interface for allowing users to connect, disconnect, and cache UCS domain information
@@ -427,10 +427,10 @@ Function Get-SaveFile($initialDirectory) {
     return $file_name
 }
 
-function Generate_Health_Check() {
+function Start-UcsDataGathering {
     <#
     .DESCRIPTION
-        Function for creating the html health check report for all of the connected UCS domains
+        Function for creating the html configuration report for all of the connected UCS domains
     #>
     # Check to ensure an active UCS handle exists before generating the report
     if(!(Confirm-AnyUcsHandle)) {
@@ -478,13 +478,6 @@ function Generate_Health_Check() {
     # Pseudo-function in ScriptBlock format called for each UCS domain
     $GetUcsData = {
         Param ($domain, $Process_Hash)
-
-        function DoSomething {
-            param (
-                $param1
-            )
-            Write-Host "hello world"
-        }
 
         # Set Job Progress to 0 and connect to the UCS domain passed
         $Process_Hash.Progress[$domain] = 0;
@@ -2333,10 +2326,10 @@ function Generate_Health_Check() {
 
     # Write elapsed time to user
     Write-host "Total Elapsed Time: $(&$GetElapsedTime $start)"
-    if(-Not $Silent) {Read-Host "Health Check Complete.  Press any key to continue"}
+    if(-Not $Silent) {Read-Host "UCS Configuration Report has been generated.  Press any key to continue..."}
 }
 
-function Disconnect-AllUcsDomains() {
+function Disconnect-AllUcsDomains {
     <#
     .DESCRIPTION
         Disconnects all UCS Domains and exits the script
@@ -2352,7 +2345,7 @@ function Disconnect-AllUcsDomains() {
     Write-Host "Exiting Program`n"
 }
 
-function Test-RequiredPsModules() {
+function Test-RequiredPsModules {
     <#
     .DESCRIPTION
         Function that checks that all required powershell modules are present
