@@ -95,7 +95,7 @@ function Start-Main {
 
     # Automates configuration report execution if RunReport switch is passed
     If($UseCached -and $RunReport) {
-        Start-UcsDataGathering
+        Start-UcsDataGather
         if($Silent) {
             Disconnect-AllUcsDomains
             exit
@@ -129,7 +129,7 @@ function Show-MainMenu {
             1 {Show-CnxnMgmtMenu}
 
             # Run UCS Configuration Report
-            2 {Start-UcsDataGathering}
+            2 {Start-UcsDataGather}
 
             # Cleanly exit program
             'q' {
@@ -427,7 +427,21 @@ Function Get-SaveFile($initialDirectory) {
     return $file_name
 }
 
-function Start-UcsDataGathering {
+function Get-ElapsedTime {
+    <#
+    .DESCRIPTION
+        Computes time from start of script.
+    .PARAMETER $FirstTimestamp
+        Timestamp to compare against current time.
+    #>
+    param (
+        [Parameter(Mandatory)]$FirstTimestamp
+    )
+    $run_time = (Get-Date) - $FirstTimestamp
+    return "$($run_time.Hours) hrs, $($run_time.Minutes) mins, $($run_time.Seconds).$($run_time.Milliseconds) secs"
+}
+
+function Start-UcsDataGather {
     <#
     .DESCRIPTION
         Function for creating the html configuration report for all of the connected UCS domains
@@ -436,19 +450,6 @@ function Start-UcsDataGathering {
     if(!(Confirm-AnyUcsHandle)) {
         Read-Host "There are currently no connected UCS domains`n`nPress any key to continue"
         return
-    }
-    # Function variable that computes the elapsed time based on the start time parameter and returns a formatted time string
-    $GetElapsedTime = {
-        param ($start)
-        $runtime = $(get-date) - $start
-        $retStr = [string]::format(
-            "{0} hours, {1} minutes, {2}.{3} seconds",
-            $runtime.Hours,
-            $runtime.Minutes,
-            $runtime.Seconds,
-            $runtime.Milliseconds
-        )
-        $retStr
     }
 
     if($Silent) {
@@ -465,7 +466,7 @@ function Start-UcsDataGathering {
     Write-Host "Generating Report..."
 
     # Get Start time to track report generation run time
-    $start = get-date
+    $start_timestamp = get-date
 
     # Creates a synchronized hash variable of all the UCS domains and credential info
     $Process_Hash = [hashtable]::Synchronized(@{})
@@ -2325,7 +2326,7 @@ function Start-UcsDataGathering {
     }
 
     # Write elapsed time to user
-    Write-host "Total Elapsed Time: $(&$GetElapsedTime $start)"
+    Write-host "Total Elapsed Time: $(Get-ElapsedTime -FirstTimestamp $start_timestamp)`n"
     if(-Not $Silent) {Read-Host "UCS Configuration Report has been generated.  Press any key to continue..."}
 }
 
