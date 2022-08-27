@@ -21,6 +21,9 @@ Bypasses prompts and menus. Auto-names report as [UCS_Report_YY_MM_DD_hh_mm_ss.h
 .PARAMETER Email
 Email the report file after automated execution.  Must specify target email address. (e.g., user@domain.tld)
 
+.PARAMETER NoStats
+    Skip statistics collection
+
 .EXAMPLE
 UCS_Config_Report.ps1 -UseCached -RunReport -Silent -Email user@domain.tld
 
@@ -47,9 +50,10 @@ Param(
     [Switch] $RunReport,
     [Switch] $Silent,
     [String] $Email = $null,
-    [Parameter(DontShow)]$RunAsProcess,
-    [Parameter(DontShow)]$Domain,
-    [Parameter(DontShow)]$ProcessHash
+    [Switch] $NoStats,
+    [Parameter(DontShow)][Switch] $RunAsProcess,
+    [Parameter(DontShow)] $Domain,
+    [Parameter(DontShow)] $ProcessHash
 )
 
 # Global Variable Definition
@@ -58,6 +62,7 @@ $UCS = @{}                              # Hash variable for storing UCS handles
 $UCS_Creds = @{}                        # Hash variable for storing UCS domain credentials
 $runspaces = $null                      # Runspace pool for simultaneous code execution
 $dflt_output_path = [System.Environment]::GetFolderPath('Desktop') # Default output path. Alternate: $pwd
+$test_mode = $true                      # Boolean flag for script testing.
 
 # Determine script platform
 # ==========================
@@ -463,13 +468,44 @@ function Get-ElapsedTime {
     return "$($run_time.Hours) hrs, $($run_time.Minutes) mins, $($run_time.Seconds).$($run_time.Milliseconds) secs"
 }
 
+function Get-DeviceStats {
+    <#
+    .DESCRIPTION
+        Extract specific statistics from UCS bulk dump
+    .PARAMETER $UcsStats
+        Collection of statistics
+    .PARAMETER $DnFilter
+        String for case sensitive regex match on object DN
+    .PARAMETER $rnFilter
+        String for case sensitive regex match on object RN
+    .PARAMETER $StatList
+        Array of desired returned stats (e.g., @(TotalBytes,TotalPackets))
+        #>
+    param (
+        [Parameter(Mandatory)] $UcsStats,
+        [Parameter(Mandatory)] $DnFilter,
+        [Parameter(Mandatory)] $RnFilter,
+        [Parameter(Mandatory)] $StatList
+    )
+    if ($NoStats) {
+        $stat_coll = @{}
+        $StatList | ForEach-Object {$stat_coll[$_] = 0}
+    } else {
+        # $start_time = Get-Date
+        $stat_coll = $UcsStats.Where({$_.Dn -cmatch "$($DnFilter)" -and $_.Rn -cmatch "$($RnFilter)"}) | Select-Object $StatList
+        # Write-Host "Stats Lookup Time: $(Get-ElapsedTime -FirstTimestamp $start_time)"
+    }
+
+    return $stat_coll
+}
+
 function Invoke-UcsDataGather {
     param (
         [Parameter(Mandatory)]$domain,
         [Parameter(Mandatory)]$Process_Hash
     )
     # Set Job Progress to 0 and connect to the UCS domain passed
-    $Process_Hash.Progress[$domain] = 0;
+    $Process_Hash.Progress[$domain] = 0
 
     $handle = Connect-Ucs $Process_Hash.Creds[$domain].VIP -Credential $Process_Hash.Creds[$domain].Creds
 
@@ -1624,7 +1660,7 @@ function Invoke-UcsDataGather {
     # Grab all Service Profiles
     $profiles = Get-ucsServiceProfile -Ucs $handle
     # Grab all performance statistics for future use
-    $statistics = Get-UcsStatistics -Ucs $handle
+    if (!NoStats) {$statistics = Get-UcsStatistics -Ucs $handle} else {$statistics = $null}
 
     # Array variable for storing template data
     $templates = @()
@@ -1875,17 +1911,21 @@ function Invoke-UcsDataGather {
                     "minute*" {$profileHash.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int]) * 60}
                     "second*" {$profileHash.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int])}
                 }
-                $profileHash.Performance.vNics = @{}
-                $profileHash.Performance.vHbas = @{}
+
+                $cmd_args = @{
+                    UcsStats = $statistics
+                    RnFilter = "vnic-stats"
+                    StatList = @("BytesRx","BytesRxDeltaAvg","BytesTx","BytesTxDeltaAvg","PacketsRx","PacketsRxDeltaAvg","PacketsTx","PacketsTxDeltaAvg")
+                }
                 # Iterate through each vHBA and grab performance data
+                $profileHash.Performance.vHbas = @{}
                 $profileHash.Storage.Hbas | ForEach-Object {
-                    $hba = $_
-                    $profileHash.Performance.vHbas[$hba.Name] = $statistics.Where({$_.Dn -cmatch $hba.EquipmentDn -and $_.Rn -ieq "vnic-stats"}) | Select-Object BytesRx,BytesRxDeltaAvg,BytesTx,BytesTxDeltaAvg,PacketsRx,PacketsRxDeltaAvg,PacketsTx,PacketsTxDeltaAvg
+                    $profileHash.Performance.vHbas[$_.Name] = Get-DeviceStats @cmd_args -DnFilter $_.EquipmentDn
                 }
                 # Iterate through each vNIC and grab performance data
+                $profileHash.Performance.vNics = @{}
                 $profileHash.Network.Nics | ForEach-Object {
-                    $nic = $_
-                    $profileHash.Performance.vNics[$nic.Name] = $statistics.Where({$_.Dn -cmatch $nic.EquipmentDn -and $_.Rn -ieq "vnic-stats"}) | Select-Object BytesRx,BytesRxDeltaAvg,BytesTx,BytesTxDeltaAvg,PacketsRx,PacketsRxDeltaAvg,PacketsTx,PacketsTxDeltaAvg
+                    $profileHash.Performance.vNics[$_.Name] = Get-DeviceStats @cmd_args -DnFilter $_.EquipmentDn
                 }
             }
 
@@ -1934,8 +1974,13 @@ function Invoke-UcsDataGather {
             $uplinkHash.IfRole = $_.IfRole
             $uplinkHash.XcvrType = $_.XcvrType
             $uplinkHash.Performance = @{}
-            $uplinkHash.Performance.Rx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
-            $uplinkHash.Performance.Tx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+            $cmd_args = @{
+                UcsStats = $statistics
+                DnFilter = "$($port.Dn)/.*stats"
+                StatList = @("TotalBytes","TotalPackets","TotalBytesDeltaAvg")
+            }
+            $uplinkHash.Performance.Rx = Get-DeviceStats @cmd_args -RnFilter "rx[-]stats"
+            $uplinkHash.Performance.Tx = Get-DeviceStats @cmd_args -RnFilter "tx[-]stats"
             $uplinkHash.Status = $_.OperState
             $uplinkHash.State = $_.AdminState
             $DomainHash.Lan.UplinkPorts += $uplinkHash
@@ -1954,8 +1999,13 @@ function Invoke-UcsDataGather {
             $serverPortHash.IfRole = $_.IfRole
             $serverPortHash.XcvrType = $_.XcvrType
             $serverPortHash.Performance = @{}
-            $serverPortHash.Performance.Rx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
-            $serverPortHash.Performance.Tx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+            $cmd_args = @{
+                UcsStats = $statistics
+                DnFilter = "$($port.Dn)/.*stats"
+                StatList = @("TotalBytes","TotalPackets","TotalBytesDeltaAvg")
+            }
+            $serverPortHash.Performance.Rx = Get-DeviceStats @cmd_args -RnFilter "rx[-]stats"
+            $serverPortHash.Performance.Tx = Get-DeviceStats @cmd_args -RnFilter "tx[-]stats"
             $serverPortHash.Status = $_.OperState
             $serverPortHash.State = $_.AdminState
             $DomainHash.Lan.ServerPorts += $serverPortHash
@@ -2062,8 +2112,13 @@ function Invoke-UcsDataGather {
             $uplinkHash.IfRole = $_.IfRole
             $uplinkHash.XcvrType = $_.XcvrType
             $uplinkHash.Performance = @{}
-            $uplinkHash.Performance.Rx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
-            $uplinkHash.Performance.Tx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+            $cmd_args = @{
+                UcsStats = $statistics
+                DnFilter = "$($port.Dn)/.*stats"
+                StatList = @("TotalBytes","TotalPackets","TotalBytesDeltaAvg")
+            }
+            $uplinkHash.Performance.Rx = Get-DeviceStats @cmd_args -RnFilter "rx[-]stats"
+            $uplinkHash.Performance.Tx = Get-DeviceStats @cmd_args -RnFilter "tx[-]stats"
             $uplinkHash.Status = $_.OperState
             $uplinkHash.State = $_.AdminState
             $DomainHash.San.UplinkFcoePorts += $uplinkHash
@@ -2082,7 +2137,13 @@ function Invoke-UcsDataGather {
             $uplinkHash.Mode = $_.Mode
             $uplinkHash.XcvrType = $_.XcvrType
             $uplinkHash.Performance = @{}
-            $stats = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/stats" -and $_.Rn -cmatch "stats"})
+            $cmd_args = @{
+                UcsStats = $statistics
+                DnFilter = "$($port.Dn)/stats"
+                RnFilter = "stats"
+                StatList = @("BytesRx","PacketsRx","BytesRxDeltaAvg","BytesTx","PacketsTx","BytesTxDeltaAvg")
+            }
+            $stats = Get-DeviceStats @cmd_args
             $uplinkHash.Performance.Rx = $stats | Select-Object BytesRx,PacketsRx,BytesRxDeltaAvg
             $uplinkHash.Performance.Tx = $stats | Select-Object BytesTx,PacketsTx,BytesTxDeltaAvg
             $uplinkHash.Status = $_.OperState
@@ -2103,7 +2164,13 @@ function Invoke-UcsDataGather {
             $storageFcPortHash.Mode = $_.Mode
             $storageFcPortHash.XcvrType = $_.XcvrType
             $storageFcPortHash.Performance = @{}
-            $stats = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/stats" -and $_.Rn -cmatch "stats"})
+            $cmd_args = @{
+                UcsStats = $statistics
+                DnFilter = "$($port.Dn)/stats"
+                RnFilter = "stats"
+                StatList = @("BytesRx","PacketsRx","BytesRxDeltaAvg","BytesTx","PacketsTx","BytesTxDeltaAvg")
+            }
+            $stats = Get-DeviceStats @cmd_args
             $storageFcPortHash.Performance.Rx = $stats | Select-Object BytesRx,PacketsRx,BytesRxDeltaAvg
             $storageFcPortHash.Performance.Tx = $stats | Select-Object BytesTx,PacketsTx,BytesTxDeltaAvg
             $storageFcPortHash.Status = $_.OperState
@@ -2124,8 +2191,13 @@ function Invoke-UcsDataGather {
             $storagePortHash.IfRole = $_.IfRole
             $storagePortHash.XcvrType = $_.XcvrType
             $storagePortHash.Performance = @{}
-            $storagePortHash.Performance.Rx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "rx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
-            $storagePortHash.Performance.Tx = $statistics.Where({$_.Dn -cmatch "$($port.Dn)/.*stats" -and $_.Rn -cmatch "tx[-]stats"}) | Select-Object TotalBytes,TotalPackets,TotalBytesDeltaAvg
+            $cmd_args = @{
+                UcsStats = $statistics
+                DnFilter = "$($port.Dn)/.*stats"
+                StatList = @("TotalBytes","TotalPackets","TotalBytesDeltaAvg")
+            }
+            $storagePortHash.Performance.Rx = Get-DeviceStats @cmd_args -RnFilter "rx[-]stats"
+            $storagePortHash.Performance.Tx = Get-DeviceStats @cmd_args -RnFilter "tx[-]stats"
             $storagePortHash.Status = $_.OperState
             $storagePortHash.State = $_.AdminState
             $DomainHash.San.StoragePorts += $storagePortHash
@@ -2216,7 +2288,7 @@ function Start-UcsDataGather {
     Write-Host "Generating Report..."
 
     # Get Start time to track report generation run time
-    $start_timestamp = get-date
+    $start_timestamp = Get-Date
 
     # Creates a synchronized hash variable of all the UCS domains and credential info
     $Process_Hash = [hashtable]::Synchronized(@{})
@@ -2240,6 +2312,7 @@ function Start-UcsDataGather {
         $powershell = [powershell]::Create().
                         AddCommand($recurse_script).
                             AddParameter("RunAsProcess").
+                            AddParameter("NoStats",$NoStats).
                             AddParameter("Domain",$domain).
                             AddParameter("ProcessHash",$Process_Hash)
         $powershell.RunspacePool = $runspacepool
