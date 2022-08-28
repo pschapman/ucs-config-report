@@ -59,7 +59,7 @@ The current stable version will always be in the master branch.
    1. Input IP/FQDN and credentials as prompted
 4. Select option 7 on the Connection Management Menu to return to the Main Menu
 5. Select option 2 on the Main Menu to create a report
-   1. Select a location and file name for the report
+   1. Select a location and file name for the report (Windows only. For Mac/Linux auto-generated filename saved to script directory.)
 6. Select option Q on the Main Menu to exit the program (automatically disconnects from UCS domain)
 
 #### Automated
