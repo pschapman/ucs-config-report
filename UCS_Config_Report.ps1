@@ -212,7 +212,6 @@ function Add-UcsHandleAndCreds {
                     $domain.Handle = Connect-Ucs $domain.VIP -Credential $domain.Creds -NotDefault -ErrorAction SilentlyContinue
                     # Checks that handle actually exists
                     Get-UcsStatus -Ucs $domain.Handle | Out-Null
-
                 }
                 # Catch any failed domain connections
                 catch [Exception] {
@@ -585,7 +584,6 @@ function Invoke-UcsDataGather {
 
     # $statistics.Where({$_.Dn -cmatch "sys/rack-unit-[0-9]/board/temp-stats$"})
 
-
     #===================================#
     #    Start Inventory Collection        #
     #===================================#
@@ -617,7 +615,6 @@ function Invoke-UcsDataGather {
         # Get the common name of the fi from the manufacturing definition and format the text
         $fiModel = ($EquipmentManDef | Where-Object  {$_.Sku -cmatch $($fi.Model)} | Select-Object Name).Name -replace "Cisco UCS ", ""
         if($fiModel -is [array]) {$fiHash.Model = $fiModel.Item(0) -replace "Cisco UCS ", ""} else {$fiHash.Model = $fiModel -replace "Cisco UCS ", ""}
-
 
         $fiHash.Serial = $fi.Serial
         # Get FI System and Kernel FW versions
@@ -658,8 +655,7 @@ function Invoke-UcsDataGather {
             $fiHash.Ports_Licensed = $ports_licensed
         }
         Remove-Variable ports_licensed
-        Remove-Variable ports_used
-
+        if ($ports_used) {Remove-Variable ports_used}
 
         # Get Ethernet and FC Switching mode of FI
         $fiHash.Ethernet_Mode = (Get-UcsLanCloud -Ucs $handle).Mode
@@ -1035,12 +1031,12 @@ function Invoke-UcsDataGather {
                 # Store current pipe variable to local variable
                 $entry = $_
                 #===========================================================#
-                #    Switch statement using the device type as the target    #
-                #                                                            #
-                #    Variable Definitions:                                    #
-                #        Level1 - VNIC, Order                                #
-                #        Level2 - Type, VNIC Name                            #
-                #        Level3 - Lun, Type, WWN                                #
+                #    Switch statement using the device type as the target   #
+                #                                                           #
+                #    Variable Definitions:                                  #
+                #        Level1 - VNIC, Order                               #
+                #        Level2 - Type, VNIC Name                           #
+                #        Level3 - Lun, Type, WWN                            #
                 #===========================================================#
                 Switch ($entry.Type) {
                     # Matches either local media or SAN storage
@@ -1487,7 +1483,6 @@ function Invoke-UcsDataGather {
     }
     # End Rack Inventory Collection
 
-
     # Start Policy Data Collection
 
     # Update job progress percent
@@ -1547,12 +1542,12 @@ function Invoke-UcsDataGather {
             # Store current pipe variable to local variable
             $entry = $_
             #===========================================================#
-            #    Switch statement using the device type as the target    #
-            #                                                            #
-            #    Variable Definitions:                                    #
-            #        Level1 - VNIC, Order                                #
-            #        Level2 - Type, VNIC Name                            #
-            #        Level3 - Lun, Type, WWN                                #
+            #    Switch statement using the device type as the target   #
+            #                                                           #
+            #    Variable Definitions:                                  #
+            #        Level1 - VNIC, Order                               #
+            #        Level2 - Type, VNIC Name                           #
+            #        Level3 - Lun, Type, WWN                            #
             #===========================================================#
             Switch ($entry.Type) {
                 # Matches either local media or SAN storage
