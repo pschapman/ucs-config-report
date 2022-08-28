@@ -512,6 +512,8 @@ function Invoke-UcsDataGather {
 
     # Grab all performance statistics for future use
     if (!$NoStats) {$statistics = Get-UcsStatistics -Ucs $handle} else {$statistics = ""}
+    # Grab disk capabilities from UCS catalog
+    $disk_types = Get-UcsEquipmentLocalDiskDef -Ucs $handle
 
     # Initialize DomainHash variable for this domain
     Start-UcsTransaction -Ucs $handle
@@ -552,8 +554,6 @@ function Invoke-UcsDataGather {
         StatList = @("Dn","InputPower","InputPowerAvg","InputPowerMax","OutputPower","OutputPowerAvg","OutputPowerMax","Suspect")
     }
     $DomainHash.System.Chassis_Power += Get-DeviceStats @cmd_args
-    # $statistics.Where({$_.Dn -cmatch "sys/chassis-[0-9]+/blade-[0-9]/board/power-stats$"})
-    # $DomainHash.System.Chassis_Power += Get-UcsChassisStats -Ucs $handle | Select-Object Dn,InputPower,InputPowerAvg,InputPowerMax,OutputPower,OutputPowerAvg,OutputPowerMax,Suspect
     $DomainHash.System.Chassis_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]stats)',"")}
 
     # Get Blade and Rack Mount power statistics
@@ -565,8 +565,6 @@ function Invoke-UcsDataGather {
         StatList = @("Dn","ConsumedPower","ConsumedPowerAvg","ConsumedPowerMax","InputCurrent","InputCurrentAvg","InputVoltage","InputVoltageAvg","Suspect")
     }
     $DomainHash.System.Server_Power += Get-DeviceStats @cmd_args
-    # $statistics.Where({$_.Dn -cmatch "sys/rack-unit-[0-9]/board/power-stats$"})
-    # $DomainHash.System.Server_Power += Get-UcsComputeMbPowerStats -Ucs $handle | Sort-Object -Property Dn | Select-Object Dn,ConsumedPower,ConsumedPowerAvg,ConsumedPowerMax,InputCurrent,InputCurrentAvg,InputVoltage,InputVoltageAvg,Suspect
     $DomainHash.System.Server_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('([/]board.*)',"")}
 
     # Get Blade and Rack Mount temperature statistics
@@ -578,11 +576,7 @@ function Invoke-UcsDataGather {
         StatList = @("Dn","FmTempSenIo","FmTempSenIoAvg","FmTempSenIoMax","FmTempSenRear","FmTempSenRearAvg","FmTempSenRearMax","FrontTemp","FrontTempAvg","FrontTempMax","Ioh1Temp","Ioh1TempAvg","Ioh1TempMax","Suspect")
     }
     $DomainHash.System.Server_Temp += Get-DeviceStats @cmd_args
-    # $statistics.Where({$_.Dn -cmatch "sys/chassis-[0-9]+/blade-[0-9]/board/temp-stats$"})
-    # $DomainHash.System.Server_Temp += Get-UcsComputeMbTempStats -Ucs $handle | Sort-Object -Property Ucs,Dn | Select-Object Dn,FmTempSenIo,FmTempSenIoAvg,FmTempSenIoMax,FmTempSenRear,FmTempSenRearAvg,FmTempSenRearMax,FmTempSenRearL,FmTempSenRearLAvg,FmTempSenRearLMax,FmTempSenRearR,FmTempSenRearRAvg,FmTempSenRearRMax,Suspect
     $DomainHash.System.Server_Temp | ForEach-Object {$_.Dn = $_.Dn -replace ('([/]board.*)',"")}
-
-    # $statistics.Where({$_.Dn -cmatch "sys/rack-unit-[0-9]/board/temp-stats$"})
 
     #===================================#
     #    Start Inventory Collection        #
@@ -917,7 +911,7 @@ function Invoke-UcsDataGather {
                 # Get common name of disk model and format text
                 $equipmentDef = $EquipmentManDef | Where-Object {$_.OemPartNumber -ieq $($disk.Model)}
                 # Get detailed disk capability data
-                $capabilities = Get-UcsEquipmentLocalDiskDef -Ucs $handle -Filter "Dn -cmatch $($disk.Model)"
+                $capabilities = $disk_types.Where({$_.Dn -match $disk.Model})
                 $diskHash.Id = $disk.Id
                 $diskHash.Pid = $equipmentDef.Pid
                 $diskHash.Vendor = $disk.Vendor
@@ -1256,7 +1250,7 @@ function Invoke-UcsDataGather {
                 # Get common name of disk model and format text
                 $equipmentDef = $EquipmentManDef | Where-Object {$_.OemPartNumber -ieq $($disk.Model)}
                 # Get detailed disk capability data
-                $capabilities = Get-UcsEquipmentLocalDiskDef -Ucs $handle -Filter "Dn -cmatch $($disk.Model)"
+                $capabilities = $disk_types.Where({$_.Dn -match $disk.Model})
                 $diskHash.Id = $disk.Id
                 $diskHash.Pid = $equipmentDef.Pid
                 $diskHash.Vendor = $disk.Vendor
@@ -2296,7 +2290,6 @@ function Invoke-UcsDataGather {
     $Process_Hash.Domains[$DomainName] = $DomainHash
     # Disconnect from current UCS domain
     Disconnect-Ucs -Ucs $handle
-
 }
 
 function Start-UcsDataGather {
