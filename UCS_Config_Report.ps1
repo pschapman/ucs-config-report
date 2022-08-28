@@ -62,7 +62,6 @@ $UCS = @{}                              # Hash variable for storing UCS handles
 $UCS_Creds = @{}                        # Hash variable for storing UCS domain credentials
 $runspaces = $null                      # Runspace pool for simultaneous code execution
 $dflt_output_path = [System.Environment]::GetFolderPath('Desktop') # Default output path. Alternate: $pwd
-$test_mode = $true                      # Boolean flag for script testing.
 
 # Determine script platform
 # ==========================
@@ -489,7 +488,10 @@ function Get-DeviceStats {
     )
     if ($NoStats) {
         $stat_coll = @{}
-        $StatList | ForEach-Object {$stat_coll[$_] = 0}
+        $StatList | ForEach-Object {
+            # if ($_ -match "Dn") {Write-Host "Hmmm.... $($DnFilter)"}
+            $stat_coll[$_] = 0
+        }
     } else {
         # $start_time = Get-Date
         $stat_coll = $UcsStats.Where({$_.Dn -cmatch "$($DnFilter)" -and $_.Rn -cmatch "$($RnFilter)"}) | Select-Object $StatList
@@ -508,6 +510,9 @@ function Invoke-UcsDataGather {
     $Process_Hash.Progress[$domain] = 0
 
     $handle = Connect-Ucs $Process_Hash.Creds[$domain].VIP -Credential $Process_Hash.Creds[$domain].Creds
+
+    # Grab all performance statistics for future use
+    if (!$NoStats) {$statistics = Get-UcsStatistics -Ucs $handle} else {$statistics = ""}
 
     # Initialize DomainHash variable for this domain
     Start-UcsTransaction -Ucs $handle
@@ -538,17 +543,48 @@ function Invoke-UcsDataGather {
     $DomainHash.System.Config_Policy = (Get-UcsMgmtCfgExportPolicy -Ucs $handle | Select-Object AdminState).AdminState
     # Get Call Home admin state
     $DomainHash.System.CallHome = (Get-UcsCallHome -Ucs $handle | Select-Object AdminState).AdminState
-    # Get System and Server power statistics
+
+    # Get Chassis power statistics
     $DomainHash.System.Chassis_Power = @()
-    $DomainHash.System.Chassis_Power += Get-UcsChassisStats -Ucs $handle | Select-Object Dn,InputPower,InputPowerAvg,InputPowerMax,OutputPower,OutputPowerAvg,OutputPowerMax,Suspect
+    $cmd_args = @{
+        UcsStats = $statistics
+        DnFilter = "sys/chassis-[0-9]+/stats"
+        RnFilter = "stats"
+        StatList = @("Dn","InputPower","InputPowerAvg","InputPowerMax","OutputPower","OutputPowerAvg","OutputPowerMax","Suspect")
+    }
+    $DomainHash.System.Chassis_Power += Get-DeviceStats @cmd_args
+    # $statistics.Where({$_.Dn -cmatch "sys/chassis-[0-9]+/blade-[0-9]/board/power-stats$"})
+    # $DomainHash.System.Chassis_Power += Get-UcsChassisStats -Ucs $handle | Select-Object Dn,InputPower,InputPowerAvg,InputPowerMax,OutputPower,OutputPowerAvg,OutputPowerMax,Suspect
     $DomainHash.System.Chassis_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]stats)',"")}
+
+    # Get Blade and Rack Mount power statistics
     $DomainHash.System.Server_Power = @()
-    $DomainHash.System.Server_Power += Get-UcsComputeMbPowerStats -Ucs $handle | Sort-Object -Property Dn | Select-Object Dn,ConsumedPower,ConsumedPowerAvg,ConsumedPowerMax,InputCurrent,InputCurrentAvg,InputVoltage,InputVoltageAvg,Suspect
+    $cmd_args = @{
+        UcsStats = $statistics
+        DnFilter = "sys/.*/board/power-stats"
+        RnFilter = "power-stats"
+        StatList = @("Dn","ConsumedPower","ConsumedPowerAvg","ConsumedPowerMax","InputCurrent","InputCurrentAvg","InputVoltage","InputVoltageAvg","Suspect")
+    }
+    $DomainHash.System.Server_Power += Get-DeviceStats @cmd_args
+    # $statistics.Where({$_.Dn -cmatch "sys/rack-unit-[0-9]/board/power-stats$"})
+    # $DomainHash.System.Server_Power += Get-UcsComputeMbPowerStats -Ucs $handle | Sort-Object -Property Dn | Select-Object Dn,ConsumedPower,ConsumedPowerAvg,ConsumedPowerMax,InputCurrent,InputCurrentAvg,InputVoltage,InputVoltageAvg,Suspect
     $DomainHash.System.Server_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('([/]board.*)',"")}
-    # Get Server temperatures
+
+    # Get Blade and Rack Mount temperature statistics
     $DomainHash.System.Server_Temp = @()
-    $DomainHash.System.Server_Temp += Get-UcsComputeMbTempStats -Ucs $handle | Sort-Object -Property Ucs,Dn | Select-Object Dn,FmTempSenIo,FmTempSenIoAvg,FmTempSenIoMax,FmTempSenRear,FmTempSenRearAvg,FmTempSenRearMax,FmTempSenRearL,FmTempSenRearLAvg,FmTempSenRearLMax,FmTempSenRearR,FmTempSenRearRAvg,FmTempSenRearRMax,Suspect
+    $cmd_args = @{
+        UcsStats = $statistics
+        DnFilter = "sys/.*/board/temp-stats"
+        RnFilter = "temp-stats"
+        StatList = @("Dn","FmTempSenIo","FmTempSenIoAvg","FmTempSenIoMax","FmTempSenRear","FmTempSenRearAvg","FmTempSenRearMax","FrontTemp","FrontTempAvg","FrontTempMax","Ioh1Temp","Ioh1TempAvg","Ioh1TempMax","Suspect")
+    }
+    $DomainHash.System.Server_Temp += Get-DeviceStats @cmd_args
+    # $statistics.Where({$_.Dn -cmatch "sys/chassis-[0-9]+/blade-[0-9]/board/temp-stats$"})
+    # $DomainHash.System.Server_Temp += Get-UcsComputeMbTempStats -Ucs $handle | Sort-Object -Property Ucs,Dn | Select-Object Dn,FmTempSenIo,FmTempSenIoAvg,FmTempSenIoMax,FmTempSenRear,FmTempSenRearAvg,FmTempSenRearMax,FmTempSenRearL,FmTempSenRearLAvg,FmTempSenRearLMax,FmTempSenRearR,FmTempSenRearRAvg,FmTempSenRearRMax,Suspect
     $DomainHash.System.Server_Temp | ForEach-Object {$_.Dn = $_.Dn -replace ('([/]board.*)',"")}
+
+    # $statistics.Where({$_.Dn -cmatch "sys/rack-unit-[0-9]/board/temp-stats$"})
+
 
     #===================================#
     #    Start Inventory Collection        #
@@ -1659,8 +1695,6 @@ function Invoke-UcsDataGather {
     $Process_Hash.Progress[$domain] = 72
     # Grab all Service Profiles
     $profiles = Get-ucsServiceProfile -Ucs $handle
-    # Grab all performance statistics for future use
-    if (!NoStats) {$statistics = Get-UcsStatistics -Ucs $handle} else {$statistics = $null}
 
     # Array variable for storing template data
     $templates = @()
