@@ -52,7 +52,7 @@ The current stable version will always be in the master branch.
 **NOTE:** UCS_Config_Report.ps1 and Report_Template.htm are mandatory files and must be in the same directory.
 
 ### Creating Reports
-#### Manual (Windows)
+#### Manual (All platforms as of v4.1)
 1. At a PowerShell prompt run `UCS_Config_Report.ps1`
 2. Select option 1 on the Main Menu to manage domain connections
 3. Select option 1 on the Connection Management Menu to connect to a UCS domain
@@ -62,7 +62,7 @@ The current stable version will always be in the master branch.
    1. Select a location and file name for the report
 6. Select option Q on the Main Menu to exit the program (automatically disconnects from UCS domain)
 
-#### Automated or Apple Mac / Linux
+#### Automated
 1. Create a Credential Cache File
    1. At a PowerShell prompt run `UCS_Config_Report.ps1`
    2. Select option 1 on the Main Menu to manage domain connections
@@ -76,6 +76,21 @@ The current stable version will always be in the master branch.
 3. (Optional) Configure Scheduled Task (Windows) or cron job (Mac) to run the script on a regular basis
 
 ## What's New
+**Version 4.1 - 8/28/2022**
+- New Features
+  - Tested on both linux and Mac
+    - Credentials file is no longer mandatory to run report. Since windows dialog is unavailable, the script will drop the report in the script directory named, "UCS_Report_YYYY_MM_DD_hh_mm_ss.html"
+  - Fixed population of temperature data for rack mounts (e.g., HyperFlex) and updated column headers
+  - Term "health check" replaced throughout with "config report" or similar.
+  - Duplicate DNS and NTP servers no longer listed.
+  - "No Stats" execution. Still experimental. Added to improve performance when testing.
+- Code Revisions
+  - Multiple ScriptBlocks converted to functions to allow for test isolation
+    - Conversion required script to be run recursively.  Added needed hidden CLI options for operation.
+    - Global script statements moved to "Main" function
+  - Found and fixed all errors thrown by main data gathering process (but hidden by opaque execution)
+  - Functions renamed using standard (verb)-(action) style
+
 **Version 4.0 - 8/22/2022**
 - New Features
   - Empty memory slots now show as "empty" instead of "undefined/indeterminate". [Screenshot](DocImages/EmptyMemorySlots.png)

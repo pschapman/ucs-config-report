@@ -22,7 +22,7 @@ Bypasses prompts and menus. Auto-names report as [UCS_Report_YY_MM_DD_hh_mm_ss.h
 Email the report file after automated execution.  Must specify target email address. (e.g., user@domain.tld)
 
 .PARAMETER NoStats
-    Skip statistics collection
+    Skip statistics collection --WARNING-- Experimental feature.
 
 .EXAMPLE
 UCS_Config_Report.ps1 -UseCached -RunReport -Silent -Email user@domain.tld
@@ -33,7 +33,7 @@ task.
 .NOTES
 Version: 4.1
 Attributions::
-    Author: Paul S. Chapman (pchapman@convergeone.com) 08/20/2022
+    Author: Paul S. Chapman (pchapman@convergeone.com) 08/28/2022
     History: UCS Configuration Report forked from UCS Health Check v2.6
     Source: Brandon Beck (robbeck@cisco.com) 05/11/2014
     Contribution: Marcello Turano
@@ -423,7 +423,7 @@ Function Get-SaveFile {
     param (
         [Parameter(Mandatory)]$StartingFolder
     )
-    $auto_filename = "UCS_Report_$(Get-Date -format MM_dd_yyyy_HH_mm_ss).html"
+    $auto_filename = "UCS_Report_$(Get-Date -format yyyy_MM_dd_HH_mm_ss).html"
     Clear-Host
     if ($platform -match "Windows" -and !$Silent) {
         Write-Host "Opening Windows Dialog Box..."
@@ -510,10 +510,12 @@ function Invoke-UcsDataGather {
 
     $handle = Connect-Ucs $Process_Hash.Creds[$domain].VIP -Credential $Process_Hash.Creds[$domain].Creds
 
-    # Grab all performance statistics for future use
+    # Get all system performance statistics
     if (!$NoStats) {$statistics = Get-UcsStatistics -Ucs $handle} else {$statistics = ""}
-    # Grab disk capabilities from UCS catalog
-    $disk_types = Get-UcsEquipmentLocalDiskDef -Ucs $handle
+    # Get capabilities data from domain embedded catalogs
+    $equip_localdsk_def = Get-UcsEquipmentLocalDiskDef -Ucs $handle
+    $equip_manufact_def = Get-UcsEquipmentManufacturingDef -Ucs $handle
+    $equip_physical_def = Get-UcsEquipmentPhysicalDef -Ucs $handle
 
     # Initialize DomainHash variable for this domain
     Start-UcsTransaction -Ucs $handle
@@ -530,8 +532,6 @@ function Invoke-UcsDataGather {
     #    Start System Data Collection    #
     #===================================#
     $Process_Hash.Progress[$domain] = 1
-    $EquipmentManDef = Get-UcsEquipmentManufacturingDef -Ucs $handle
-    $EquipmentPhysicalDef = Get-UcsEquipmentPhysicalDef -Ucs $handle
 
     # Get UCS Cluster State
     $system = Get-UcsStatus -Ucs $handle | Select-Object Name,VirtualIpv4Address,HaReady,FiALeadership,FiAManagementServicesState,FiBLeadership,FiBManagementServicesState
@@ -607,7 +607,7 @@ function Invoke-UcsDataGather {
         }
 
         # Get the common name of the fi from the manufacturing definition and format the text
-        $fiModel = ($EquipmentManDef | Where-Object  {$_.Sku -cmatch $($fi.Model)} | Select-Object Name).Name -replace "Cisco UCS ", ""
+        $fiModel = ($equip_manufact_def | Where-Object  {$_.Sku -cmatch $($fi.Model)} | Select-Object Name).Name -replace "Cisco UCS ", ""
         if($fiModel -is [array]) {$fiHash.Model = $fiModel.Item(0) -replace "Cisco UCS ", ""} else {$fiHash.Model = $fiModel -replace "Cisco UCS ", ""}
 
         $fiHash.Serial = $fi.Serial
@@ -711,7 +711,7 @@ function Invoke-UcsDataGather {
             $bladeHash.SlotId = $_.SlotId
             $bladeHash.Service_Profile = $_.AssignedToDn
             # Get width of blade and convert to slot count
-            $bladeHash.Width = [math]::floor((($EquipmentPhysicalDef | Where-Object {$_.Dn -ilike "*$($bladeHash.Model)*"}).Width)/8)
+            $bladeHash.Width = [math]::floor((($equip_physical_def | Where-Object {$_.Dn -ilike "*$($bladeHash.Model)*"}).Width)/8)
             # Increment used slot count by current blade width
             $slotCount += $bladeHash.Width
             $chassisHash.Blades += $bladeHash
@@ -750,7 +750,7 @@ function Invoke-UcsDataGather {
         $iomHash.Fabric_Id = $iom.SwitchId
 
         # Get common name of IOM model and format for viewing
-        $iomHash.Model = ($EquipmentManDef | Where-Object {$_.Sku -cmatch $($iom.Model)}).Name -replace "Cisco UCS ", ""
+        $iomHash.Model = ($equip_manufact_def | Where-Object {$_.Sku -cmatch $($iom.Model)}).Name -replace "Cisco UCS ", ""
         $iomHash.Serial = $iom.Serial
 
         # Get the IOM uplink port channel name if configured
@@ -821,7 +821,7 @@ function Invoke-UcsDataGather {
         $bladeHash.Status = $blade.OperState
         $bladeHash.Chassis = $blade.ChassisId
         $bladeHash.Slot = $blade.SlotId
-        ($bladeHash.Model,$bladeHash.Model_Description) = $EquipmentManDef | Where-Object {$_.Sku -ieq $($blade.Model)} | Select-Object Name,Description | ForEach-Object {($_.Name -replace "Cisco UCS ", ""),$_.Description}
+        ($bladeHash.Model,$bladeHash.Model_Description) = $equip_manufact_def | Where-Object {$_.Sku -ieq $($blade.Model)} | Select-Object Name,Description | ForEach-Object {($_.Name -replace "Cisco UCS ", ""),$_.Description}
         $bladeHash.Serial = $blade.Serial
         $bladeHash.Uuid = $blade.Uuid
         $bladeHash.UsrLbl = $blade.UsrLbl
@@ -860,7 +860,7 @@ function Invoke-UcsDataGather {
             # Hash variable for storing current adapter data
             $adapterHash = @{}
             # Get common name of adapter and format string
-            $adapterHash.Model = ($EquipmentManDef | Where-Object {$_.Sku -ieq $($_.Model)}).Name -replace "Cisco UCS ", ""
+            $adapterHash.Model = ($equip_manufact_def | Where-Object {$_.Sku -ieq $($_.Model)}).Name -replace "Cisco UCS ", ""
             $adapterHash.Name = 'Adaptor-' + $_.Id
             $adapterHash.Slot = $_.Id
             $adapterHash.Fw = ($_ | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
@@ -909,9 +909,9 @@ function Invoke-UcsDataGather {
                 # Hash variable for storing current disk data
                 $diskHash = @{}
                 # Get common name of disk model and format text
-                $equipmentDef = $EquipmentManDef | Where-Object {$_.OemPartNumber -ieq $($disk.Model)}
+                $equipmentDef = $equip_manufact_def | Where-Object {$_.OemPartNumber -ieq $($disk.Model)}
                 # Get detailed disk capability data
-                $capabilities = $disk_types.Where({$_.Dn -match $disk.Model})
+                $capabilities = $equip_localdsk_def.Where({$_.Dn -match $disk.Model})
                 $diskHash.Id = $disk.Id
                 $diskHash.Pid = $equipmentDef.Pid
                 $diskHash.Vendor = $disk.Vendor
@@ -1175,7 +1175,7 @@ function Invoke-UcsDataGather {
         $rackHash.Rack_Id = $rack.Id
         $rackHash.Dn = $rack.Dn
         # Get Model and Description common names and format the text
-        ($rackHash.Model,$rackHash.Model_Description) = $EquipmentManDef | Where-Object {$_.Sku -ieq $($rack.Model)} | Select-Object Name,Description | ForEach-Object {($_.Name -replace "Cisco UCS ", ""),$_.Description}
+        ($rackHash.Model,$rackHash.Model_Description) = $equip_manufact_def | Where-Object {$_.Sku -ieq $($rack.Model)} | Select-Object Name,Description | ForEach-Object {($_.Name -replace "Cisco UCS ", ""),$_.Description}
         $rackHash.Serial = $rack.Serial
         $rackHash.Service_Profile = $rack.AssignedToDn
         $rackHash.Uuid = $rack.Uuid
@@ -1204,7 +1204,7 @@ function Invoke-UcsDataGather {
             $adapterHash.Rack_Id = $rack.Id
             $adapterHash.Slot = ${adapter}.PciSlot
             # Get common name of adapter model and format text
-            $adapterHash.Model = ($EquipmentManDef | Where-Object {$_.Sku -cmatch $(${adapter}.Model)}).Name -replace "Cisco UCS ", ""
+            $adapterHash.Model = ($equip_manufact_def | Where-Object {$_.Sku -cmatch $(${adapter}.Model)}).Name -replace "Cisco UCS ", ""
             $adapterHash.Serial = ${adapter}.Serial
             $adapterHash.Running_FW = (${adapter} | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
             # Add adapter data to Rackmount_Adapters array variable
@@ -1248,9 +1248,9 @@ function Invoke-UcsDataGather {
                 # Hash variable for storing current disk data
                 $diskHash = @{}
                 # Get common name of disk model and format text
-                $equipmentDef = $EquipmentManDef | Where-Object {$_.OemPartNumber -ieq $($disk.Model)}
+                $equipmentDef = $equip_manufact_def | Where-Object {$_.OemPartNumber -ieq $($disk.Model)}
                 # Get detailed disk capability data
-                $capabilities = $disk_types.Where({$_.Dn -match $disk.Model})
+                $capabilities = $equip_localdsk_def.Where({$_.Dn -match $disk.Model})
                 $diskHash.Id = $disk.Id
                 $diskHash.Pid = $equipmentDef.Pid
                 $diskHash.Vendor = $disk.Vendor
@@ -1484,10 +1484,8 @@ function Invoke-UcsDataGather {
     # Hash variable for storing system policies
     $DomainHash.Policies.SystemPolicies = @{}
     # Grab DNS and NTP data
-    $DomainHash.Policies.SystemPolicies.DNS = @()
-    $DomainHash.Policies.SystemPolicies.DNS += (Get-UcsDnsServer -Ucs $handle).Name
-    $DomainHash.Policies.SystemPolicies.NTP = @()
-    $DomainHash.Policies.SystemPolicies.NTP += (Get-UcsNtpServer -Ucs $handle).Name
+    $DomainHash.Policies.SystemPolicies.DNS = (Get-UcsDnsServer -Ucs $handle).Name | Select-Object -Unique
+    $DomainHash.Policies.SystemPolicies.NTP = (Get-UcsNtpServer -Ucs $handle).Name | Select-Object -Unique
     # Get chassis discovery data for future use
     $Chassis_Discovery = Get-UcsChassisDiscoveryPolicy -Ucs $handle | Select-Object Action,LinkAggregationPref
     $DomainHash.Policies.SystemPolicies.Action = $Chassis_Discovery.Action
@@ -1495,8 +1493,7 @@ function Invoke-UcsDataGather {
     $DomainHash.Policies.SystemPolicies.Power = (Get-UcsPowerControlPolicy -Ucs $handle | Select-Object Redundancy).Redundancy
     $DomainHash.Policies.SystemPolicies.FirmwareAutoSyncAction = (Get-UcsFirmwareAutoSyncPolicy | Select-Object SyncState).SyncState
     $DomainHash.Policies.SystemPolicies.Maint = (Get-UcsMaintenancePolicy -Name "default" -Ucs $handle | Select-Object UptimeDisr).UptimeDisr
-    #$DomainHash.Policies.SystemPolicies.Timezone = (Get-UcsTimezone).Timezone -replace '([(].*[)])', ""
-    $DomainHash.Policies.SystemPolicies.Timezone = (Get-UcsTimezone | Select-Object Timezone).Timezone
+    $DomainHash.Policies.SystemPolicies.Timezone = (Get-UcsTimezone -Ucs $handle).Timezone | Select-Object -Unique
 
     # Maintenance Policies
     $DomainHash.Policies.Maintenance = @()
