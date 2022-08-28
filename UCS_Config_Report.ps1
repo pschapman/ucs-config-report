@@ -1484,8 +1484,10 @@ function Invoke-UcsDataGather {
     # Hash variable for storing system policies
     $DomainHash.Policies.SystemPolicies = @{}
     # Grab DNS and NTP data
-    $DomainHash.Policies.SystemPolicies.DNS = (Get-UcsDnsServer -Ucs $handle).Name | Select-Object -Unique
-    $DomainHash.Policies.SystemPolicies.NTP = (Get-UcsNtpServer -Ucs $handle).Name | Select-Object -Unique
+    $DomainHash.Policies.SystemPolicies.DNS = @()
+    $DomainHash.Policies.SystemPolicies.DNS += (Get-UcsDnsServer -Ucs $handle).Name | Select-Object -Unique
+    $DomainHash.Policies.SystemPolicies.NTP = @()
+    $DomainHash.Policies.SystemPolicies.NTP += (Get-UcsNtpServer -Ucs $handle).Name | Select-Object -Unique
     # Get chassis discovery data for future use
     $Chassis_Discovery = Get-UcsChassisDiscoveryPolicy -Ucs $handle | Select-Object Action,LinkAggregationPref
     $DomainHash.Policies.SystemPolicies.Action = $Chassis_Discovery.Action
