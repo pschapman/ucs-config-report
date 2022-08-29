@@ -31,7 +31,7 @@ Run Script with no interaction and email report. UCS cache file must be populate
 task.
 
 .NOTES
-Version: 4.1
+Version: 4.2
 Attributions::
     Author: Paul S. Chapman (pchapman@convergeone.com) 08/28/2022
     History: UCS Configuration Report forked from UCS Health Check v2.6
@@ -859,8 +859,9 @@ function Invoke-UcsDataGather {
         $blade | Get-UcsAdaptorUnit | ForEach-Object {
             # Hash variable for storing current adapter data
             $adapterHash = @{}
+            $adapter = $_
             # Get common name of adapter and format string
-            $adapterHash.Model = ($equip_manufact_def | Where-Object {$_.Sku -ieq $($_.Model)}).Name -replace "Cisco UCS ", ""
+            $adapterHash.Model = ($equip_manufact_def | Where-Object {$_.Sku -ieq $($adapter.Model)}).Name -replace "Cisco UCS ", ""
             $adapterHash.Name = 'Adaptor-' + $_.Id
             $adapterHash.Slot = $_.Id
             $adapterHash.Fw = ($_ | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
@@ -1190,7 +1191,7 @@ function Invoke-UcsDataGather {
         # Get rack CPU data
         $cpu = ($childTargets | Where-Object {$_.Rn -match "cpu" -and $_.Model -ne ""} | Select-Object -first 1).Model
         # Get CPU common name and format text
-        $rackHash.CPU = '(' + $rack.NumOfCpus + ')' + ($cpu.Substring(([regex]::match($cpu,'CPU ').Index) + ([regex]::match($cpu,'CPU ').Length))).Replace(" ","")
+        $rackHash.CPU = '(' + $rack.NumOfCpus + ') ' + (($cpu).Replace("Intel(R) Xeon(R) ","")).Replace("CPU ","")
         $rackHash.CPU_Cores = $rack.NumOfCores
         $rackHash.CPU_Threads = $rack.NumOfThreads
         # Format available memory in GB
