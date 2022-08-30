@@ -846,12 +846,7 @@ function Invoke-UcsDataGather {
         $bladeHash.Memory_Speed = $blade.MemorySpeed
         $bladeHash.BIOS = (($childTargets | Where-Object {$_.Type -eq "blade-bios"}).Version -replace ('(?!(.*[.]){2}).*',"")).TrimEnd('.')
         $bladeHash.CIMC = ($childTargets | Where-Object {$_.Type -eq "blade-controller" -and $_.Deployment -ieq "system"}).Version
-        $bladeHash.Board_Controller = ($childTargets | Where-Object {$_.Type -eq "board-controller"}).Version
 
-        # Set Board Controller model to N/A if not present
-        if(!($bladeHash.Board_Controller)) {
-            $bladeHash.Board_Controller = 'N/A'
-        }
         # Array variable for storing blade adapter data
         $bladeHash.Adapters = @()
 
@@ -1164,8 +1159,6 @@ function Invoke-UcsDataGather {
 
     # Array variable for storing rack server data
     $DomainHash.Inventory.Rackmounts = @()
-    # Array variable for storing rack server adapter data
-    $DomainHash.Inventory.Rackmount_Adapters = @()
 
     # Iterate through each rackmount server and grab relevant data
     Get-UcsRackUnit -Ucs $handle | ForEach-Object {
@@ -1173,25 +1166,29 @@ function Invoke-UcsDataGather {
         $rack = $_
         # Hash variable for storing current rack server data
         $rackHash = @{}
-        $rackHash.Rack_Id = $rack.Id
+
         $rackHash.Dn = $rack.Dn
+        $rackHash.Status = $rack.OperState
+        $rackHash.Rack_Id = $rack.Id
         # Get Model and Description common names and format the text
         ($rackHash.Model,$rackHash.Model_Description) = $equip_manufact_def | Where-Object {$_.Sku -ieq $($rack.Model)} | Select-Object Name,Description | ForEach-Object {($_.Name -replace "Cisco UCS ", ""),$_.Description}
         $rackHash.Serial = $rack.Serial
-        $rackHash.Service_Profile = $rack.AssignedToDn
         $rackHash.Uuid = $rack.Uuid
         $rackHash.UsrLbl = $rack.UsrLbl
         $rackHash.Name = $rack.Name
+        $rackHash.Service_Profile = $rack.AssignedToDn
+
         # If no service profile exists set profile name to "Unassociated"
         if(!($rackHash.Service_Profile)) {
             $rackHash.Service_Profile = "Unassociated"
         }
         # Get child objects for pulling detailed information
         $childTargets = $rack | Get-UcsChild | Where-Object {$_.Rn -ieq "bios" -or $_.Rn -ieq "mgmt" -or $_.Rn -ieq "board"} | get-ucschild
+
         # Get rack CPU data
         $cpu = ($childTargets | Where-Object {$_.Rn -match "cpu" -and $_.Model -ne ""} | Select-Object -first 1).Model
         # Get CPU common name and format text
-        $rackHash.CPU = '(' + $rack.NumOfCpus + ') ' + (($cpu).Replace("Intel(R) Xeon(R) ","")).Replace("CPU ","")
+        $rackHash.CPU_Model = '(' + $rack.NumOfCpus + ') ' + (($cpu).Replace("Intel(R) Xeon(R) ","")).Replace("CPU ","")
         $rackHash.CPU_Cores = $rack.NumOfCores
         $rackHash.CPU_Threads = $rack.NumOfThreads
         # Format available memory in GB
@@ -1199,18 +1196,24 @@ function Invoke-UcsDataGather {
         $rackHash.Memory_Speed = $rack.MemorySpeed
         $rackHash.BIOS = (($childTargets | Where-Object {$_.Type -eq "blade-bios"}).Version -replace ('(?!(.*[.]){2}).*',"")).TrimEnd('.')
         $rackHash.CIMC = ($childTargets | Where-Object {$_.Type -eq "blade-controller" -and $_.Deployment -ieq "system"}).Version
+
+        # Array variable for storing server adapter data
+        $rackHash.Adapters = @()
+
         # Iterate through each server adapter and grab detailed information
-        foreach (${adapter} in ($rack | Get-UcsAdaptorUnit)) {
+        $rack | Get-UcsAdaptorUnit | ForEach-Object {
             $adapterHash = @{}
-            $adapterHash.Rack_Id = $rack.Id
-            $adapterHash.Slot = ${adapter}.PciSlot
+            $adapter = $_
             # Get common name of adapter model and format text
-            $adapterHash.Model = ($equip_manufact_def | Where-Object {$_.Sku -cmatch $(${adapter}.Model)}).Name -replace "Cisco UCS ", ""
-            $adapterHash.Serial = ${adapter}.Serial
-            $adapterHash.Running_FW = (${adapter} | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
+            $adapterHash.Model = ($equip_manufact_def | Where-Object {$_.Sku -cmatch $($adapter.Model)}).Name -replace "Cisco UCS ", ""
+            $adapterHash.Name = 'Adaptor-' + $_.Id
+            $adapterHash.Slot = $adapter.PciSlot
+            $adapterHash.Serial = $adapter.Serial
+            $adapterHash.Fw = ($adapter | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
             # Add adapter data to Rackmount_Adapters array variable
-            $DomainHash.Inventory.Rackmount_Adapters += $adapterHash
+            $rackHash.Adapters += $adapterHash
         }
+
         # Array variable for storing rack memory data
         $rackHash.Memory_Array = @()
         # Iterage through all memory tied to current server and grab relevant data

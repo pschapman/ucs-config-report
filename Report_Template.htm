@@ -1083,28 +1083,9 @@
 													<th class="visible-large">Speed</th>
 													<th class="visible-medium">BIOS</th>
 													<th>CIMC</th>
-												</tr>
-											</thead>
-											<tbody></tbody>
-										</table>
-									</div>
-								</div>
-							</div>
-						</div>
-						<div class="panel-group" id="RackAdapters" style="margin-top:20px;">
-							<div class="panel panel-default">
-								<div class="panel-heading">
-									<h4 class="panel-title"><a data-toggle="collapse" data-parent="#RackAdapters" href="#collapse5"><span class="glyphicon glyphicon-minus glyphicon-white heading-icon"></span><span class="glyphicon glyphicon-th-list glyphicon-white heading-icon hidden"></span>Rack Adapters</a></h4> </div>
-								<div id="collapse5" class="panel-collapse collapse in">
-									<div class="panel-body">
-										<table class="table table-bordered table-condensed">
-											<thead>
-												<tr>
-													<th>Rack ID</th>
-													<th>Slot</th>
-													<th>Model</th>
-													<th>Serial</th>
-													<th>Running FW</th>
+													<th class="visible-large">Adapter-1</th>
+													<th class="visible-large">Adapter-1 FW</th>
+													<th>Status</th>
 												</tr>
 											</thead>
 											<tbody></tbody>
@@ -3172,6 +3153,10 @@
 						t.Status + "</td></tr>")
 				}),
 				$("#Racks tbody tr").remove(), Domains[t].Inventory.Rackmounts.forEach(function(t) {
+					if("undefined" != typeof t.Adapters[0]) var e = t.Adapters[0].Model,
+						o = t.Adapters[0].Fw;
+					else var e = "Not Present",
+						o = "N/A";
 					$("#Racks tbody").append(
 						'<tr><td class="dn hidden">' +
 						t.Dn + "</td><td>" +
@@ -3179,22 +3164,16 @@
 						t.Model + "</td><td>" +
 						t.Serial + "</td><td>" +
 						t.Service_Profile + "</td><td>" +
-						t.CPU + '</td><td class="visible-medium">' +
+						t.CPU_Model + '</td><td class="visible-medium">' +
 						t.CPU_Cores + '</td><td class="visible-medium">' +
 						t.CPU_Threads + "</td><td>" +
 						t.Memory + '</td><td class="visible-large">' +
 						t.Memory_Speed + '</td><td class="visible-medium">' +
 						t.BIOS + "</td><td>" +
-						t.CIMC + "</td></tr>")
-				}),
-				$("#RackAdapters tbody tr").remove(), Domains[t].Inventory.Rackmount_Adapters.forEach(function(t) {
-					$("#RackAdapters tbody").append(
-						"<tr><td>" +
-						t.Rack_Id + "</td><td>" +
-						t.Slot + "</td><td>" +
-						t.Model + "</td><td>" +
-						t.Serial + "</td><td>" +
-						t.Running_FW + "</td></tr>")
+						t.CIMC + '</td><td class="visible-large">' +
+						e + '</td><td class="visible-large">' +
+						o + "</td><td>" +
+						t.Status + "</td></tr>")
 				})
 			} catch(e) {
 				console.log("Found Error:" + e)
@@ -3898,10 +3877,11 @@
 		}
 
 		function SetBladeDetailsData(t) {
-			var e = $.grep(Domains[$("#DomainSelect .hidden").text()].Inventory.Blades, function(e) {
+			var e = $.grep(Domains[$("#DomainSelect .hidden").text()].Inventory.Blades,
+			function(e) {
 					return e.Dn == t
 				})[0],
-				o = $("#Blade-Details");
+			o = $("#Blade-Details");
 			$(o).find("legend").text("Chassis-" + e.Chassis + "/Server-" + e.Slot + " Details"),
 			$(o).find("#blade-status").text(e.Status),
 			$(o).find("#blade-model").text(e.Model),
@@ -3909,11 +3889,14 @@
 			$(o).find("#blade-usrlbl").text(e.UsrLbl),
 			$(o).find("#blade-service-profile").text(e.Service_Profile),
 			$(o).find("#blade-description").text(e.Model_Description),
-			$(o).find("#blade-uuid").text(e.Uuid), $(o).find("#blade-serial").text(e.Serial),
-			$(o).find("#blade-cpu").text(e.CPU_Model), $(o).find("#blade-cores").text(e.CPU_Cores),
+			$(o).find("#blade-uuid").text(e.Uuid),
+			$(o).find("#blade-serial").text(e.Serial),
+			$(o).find("#blade-cpu").text(e.CPU_Model),
+			$(o).find("#blade-cores").text(e.CPU_Cores),
 			$(o).find("#blade-threads").text(e.CPU_Threads),
 			$(o).find("#blade-memory").text(e.Memory + " (GB)"),
-			$("#Blade-Details-Adapter-Collapse tbody tr").remove(), e.Adapters.forEach(function(t) {
+			$("#Blade-Details-Adapter-Collapse tbody tr").remove(),
+			e.Adapters.forEach(function(t) {
 				$("#Blade-Details-Adapter-Collapse tbody").append(
 					"<tr><td>" +
 					t.Name + "</td><td>" +
@@ -3921,7 +3904,8 @@
 					t.Fw + "</td><td>" +
 					t.Serial + "</td></tr>")
 			}),
-			$("#Blade-Details-Memory tbody tr").remove(), e.Memory_Array.forEach(function(t) {
+			$("#Blade-Details-Memory tbody tr").remove(),
+			e.Memory_Array.forEach(function(t) {
 				$("#Blade-Details-Memory tbody").append(
 					"<tr><td>" +
 					t.Name + "</td><td>" +
@@ -3930,14 +3914,18 @@
 					t.Clock + "</td></tr>")
 			}),
 			$("#Blade-Configured tbody tr").remove(),
-			$("#Blade-Configured ul").remove(), e.Configured_Boot_Order.forEach(function(t) {
+			$("#Blade-Configured ul").remove(),
+			e.Configured_Boot_Order.forEach(function(t) {
 				$.isArray(t.Entries) && t.Entries.forEach(function(t) {
 					var e = "";
 					"undefined" != typeof t.Level2 && (e = '<span class="glyphicon glyphicon-minus toggle-trigger" style="margin-right:10px;cursor:pointer;"></span>');
 					var o = '<ul class="well"><li><table class="table table-condensed boot-entry"><body><tr><td>' + e + t.Level1.Type + "</td><td>" + t.Level1.Order + "</td></tr></tbody></table></li>";
 					"undefined" != typeof t.Level2 && t.Level2.forEach(function(e) {
-						o += '<li class="boot-toggle"><table class="table table-condensed boot-entry"><body><tr><td style="padding-left:30px">' + t.Level1.Type + " " + e.Type + "</td><td></td><td>" + e.VnicName + "</td><td>" + e.Type + "</td></tr></tbody></table></li>", "undefined" != typeof e.Level3 && e.Level3.forEach(function(t) {
-							o += '<li class="boot-toggle"><table class="table table-condensed boot-entry"><body><tr><td></td><td></td><td></td><td>' + t.Type + "</td><td>" + t.Lun + "</td><td>" + t.Wwn + "</td></tr></tbody></table></li>"
+						o += '<li class="boot-toggle"><table class="table table-condensed boot-entry"><body><tr><td style="padding-left:30px">' + t.Level1.Type + " " + e.Type + "</td><td></td><td>" +
+							e.VnicName + "</td><td>" + e.Type + "</td></tr></tbody></table></li>",
+						"undefined" != typeof e.Level3 && e.Level3.forEach(function(t) {
+							o += '<li class="boot-toggle"><table class="table table-condensed boot-entry"><body><tr><td></td><td></td><td></td><td>' + t.Type + "</td><td>" + t.Lun + "</td><td>" +
+								t.Wwn + "</td></tr></tbody></table></li>"
 						})
 					}), o += "</ul>", $("#Blade-Configured .table:first").parent().append(o)
 				})
@@ -3945,9 +3933,11 @@
 			$("#Blade-Actual ul li").remove(),
 			e.Actual_Boot_Order.forEach(function(t) {
 				var e = "";
-				e = '<li class="parent_li"><span class="border"><span class="glyphicon glyphicon-minus-sign"></span>' + t.Descr + "</span>", t.Entries.forEach(function(t) {
+				e = '<li class="parent_li"><span class="border"><span class="glyphicon glyphicon-minus-sign"></span>' + t.Descr + "</span>",
+				t.Entries.forEach(function(t) {
 					e += "<ul><li>" + t + "</li></ul>"
-				}), e += "</li>", $("#Blade-Actual ul:first").append(e)
+				}),
+				e += "</li>", $("#Blade-Actual ul:first").append(e)
 			}),
 			$(".Controller-Details").empty(),
 			$.each(e.Storage, function(t, e) {
@@ -4001,7 +3991,8 @@
 				}),
 				$("#Blade-Details-Storage").append(a)
 			}),
-			$(".Vif-Details").remove(), $.each(e.VIFs, function(t, e) {
+			$(".Vif-Details").remove(),
+			$.each(e.VIFs, function(t, e) {
 				var o = "blade-vif-" + t,
 					a = $("#Blade-Vifs-Template").clone().prop("id", o).removeClass("hidden");
 				$(a).find(".panel-title a").prop("href", "#" + o + "-Collapse"),
@@ -4042,10 +4033,11 @@
 		}
 
 		function SetRackDetailsData(t) {
-			var e = $.grep(Domains[$("#DomainSelect .hidden").text()].Inventory.Rackmounts, function(e) {
+			var e = $.grep(Domains[$("#DomainSelect .hidden").text()].Inventory.Rackmounts,
+			function(e) {
 					return e.Dn == t
 				})[0],
-				o = $("#Blade-Details");
+			o = $("#Blade-Details");
 			$(o).find("legend").text("Rack Server " + e.Rack_Id + " Details"),
 			$(o).find("#blade-status").text(e.Status),
 			$(o).find("#blade-model").text(e.Model),
@@ -4055,38 +4047,54 @@
 			$(o).find("#blade-description").text(e.Model_Description),
 			$(o).find("#blade-uuid").text(e.Uuid),
 			$(o).find("#blade-serial").text(e.Serial),
-			$(o).find("#blade-cpu").text(e.CPU),
+			$(o).find("#blade-cpu").text(e.CPU_Model),
 			$(o).find("#blade-cores").text(e.CPU_Cores),
 			$(o).find("#blade-threads").text(e.CPU_Threads),
 			$(o).find("#blade-memory").text(e.Memory + " (GB)");
-			var a = $.grep(Domains[$("#DomainSelect .hidden").text()].Inventory.Rackmount_Adapters, function(t) {
-				return t.Rack_Id == e.Rack_Id
-			});
-			$("#Blade-Details-Adapter-Collapse tbody tr").remove(), a.forEach(function(t) {
-				$("#Blade-Details-Adapter-Collapse tbody").append("<tr><td>Slot-" + t.Slot + "</td><td>" + t.Model + "</td><td>" + t.Running_FW + "</td><td>" + t.Serial + "</td></tr>")
+			$("#Blade-Details-Adapter-Collapse tbody tr").remove(),
+			e.Adapters.forEach(function(t) {
+				$("#Blade-Details-Adapter-Collapse tbody").append(
+					"<tr><td>" +
+					t.Name + "</td><td>" +
+					t.Model + "</td><td>" +
+					t.Fw + "</td><td>" +
+					t.Serial + "</td></tr>")
 			}),
-			$("#Blade-Details-Memory tbody tr").remove(), e.Memory_Array.forEach(function(t) {
-				$("#Blade-Details-Memory tbody").append("<tr><td>" + t.Name + "</td><td>" + t.Location + "</td><td>" + t.Capacity + "</td><td>" + t.Clock + "</td></tr>")
+			$("#Blade-Details-Memory tbody tr").remove(),
+			e.Memory_Array.forEach(function(t) {
+				$("#Blade-Details-Memory tbody").append(
+					"<tr><td>" +
+					t.Name + "</td><td>" +
+					t.Location + "</td><td>" +
+					t.Capacity + "</td><td>" +
+					t.Clock + "</td></tr>")
 			}),
-			$("#Blade-Configured tbody tr").remove(), $("#Blade-Configured ul").remove(), e.Configured_Boot_Order.forEach(function(t) {
+			$("#Blade-Configured tbody tr").remove(),
+			$("#Blade-Configured ul").remove(),
+			e.Configured_Boot_Order.forEach(function(t) {
 				$.isArray(t.Entries) && t.Entries.forEach(function(t) {
 					var e = "";
 					"undefined" != typeof t.Level2 && (e = '<span class="glyphicon glyphicon-minus toggle-trigger" style="margin-right:10px;cursor:pointer;"></span>');
 					var o = '<ul class="well"><li><table class="table table-condensed boot-entry"><body><tr><td>' + e + t.Level1.Type + "</td><td>" + t.Level1.Order + "</td></tr></tbody></table></li>";
 					"undefined" != typeof t.Level2 && t.Level2.forEach(function(e) {
-						o += '<li class="boot-toggle"><table class="table table-condensed boot-entry"><body><tr><td style="padding-left:30px">' + t.Level1.Type + " " + e.Type + "</td><td></td><td>" + e.VnicName + "</td><td>" + e.Type + "</td></tr></tbody></table></li>", "undefined" != typeof e.Level3 && e.Level3.forEach(function(t) {
-							o += '<li class="boot-toggle"><table class="table table-condensed boot-entry"><body><tr><td></td><td></td><td></td><td>' + t.Type + "</td><td>" + t.Lun + "</td><td>" + t.Wwn + "</td></tr></tbody></table></li>"
+						o += '<li class="boot-toggle"><table class="table table-condensed boot-entry"><body><tr><td style="padding-left:30px">' + t.Level1.Type + " " + e.Type + "</td><td></td><td>" +
+							e.VnicName + "</td><td>" + e.Type + "</td></tr></tbody></table></li>",
+						"undefined" != typeof e.Level3 && e.Level3.forEach(function(t) {
+							o += '<li class="boot-toggle"><table class="table table-condensed boot-entry"><body><tr><td></td><td></td><td></td><td>' + t.Type + "</td><td>" + t.Lun + "</td><td>" +
+								t.Wwn + "</td></tr></tbody></table></li>"
 						})
 					}), o += "</ul>", $("#Blade-Configured .table:first").parent().append(o)
 				})
 			}),
-			$("#Blade-Actual ul li").remove(), e.Actual_Boot_Order.forEach(function(t) {
+			$("#Blade-Actual ul li").remove(),
+			e.Actual_Boot_Order.forEach(function(t) {
 				var e = "";
 				e = '<li class="parent_li"><span class="border"><span class="glyphicon glyphicon-minus-sign"></span>' + t.Descr + "</span>", t.Entries.forEach(function(t) {
 					e += "<ul><li>" + t + "</li></ul>"
 				}), e += "</li>", $("#Blade-Actual ul:first").append(e)
 			}),
-			$(".Controller-Details").empty(), $.each(e.Storage, function(t, e) {
+			$(".Controller-Details").empty(),
+			$.each(e.Storage, function(t, e) {
 				var o = "controller-group-" + t,
 					a = $("#Blade-Storage-Template").clone().prop("id", o).removeClass("hidden");
 				$(a).find(".panel-title a").prop("href", "#" + o + "-Collapse").attr("data-parent", "#" + o),
@@ -4118,7 +4126,8 @@
 				}),
 				$("#Blade-Details-Storage").append(a)
 			}),
-			$(".Vif-Details").remove(), $.each(e.VIFs, function(t, e) {
+			$(".Vif-Details").remove(),
+			$.each(e.VIFs, function(t, e) {
 				var o = "blade-vif-" + t,
 					a = $("#Blade-Vifs-Template").clone().prop("id", o).removeClass("hidden");
 				$(a).find(".panel-title a").prop("href", "#" + o + "-Collapse"),
