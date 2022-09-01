@@ -2469,7 +2469,7 @@
 						<li><a href="#Template-Details-iSCSI" data-toggle="pill">iSCSI</a> </li>
 						<li><a href="#Template-Details-Boot" data-toggle="pill">Boot Order</a> </li>
 						<li><a href="#Template-Details-Policies" data-toggle="pill">Policies</a> </li>
-						<li><a href="#Template-Details-Vifs" data-toggle="pill" class="instance">VIFs</a> </li>
+						<li><a href="#Template-Details-Vifs" data-toggle="pill" class="instance">VIF Paths</a> </li>
 						<li><a href="#Template-Details-Performance" data-toggle="pill" class="instance">Performance</a> </li>
 					</ul>
 					<div class="tab-content">
@@ -4139,7 +4139,8 @@
 					e.Adapter_Port + "</td><td>" +
 					e.Fex_Host_Port + "</td><td>" +
 					e.Fex_Network_Port + "</td><td>" +
-					e.FI_Server_Port + "</td></tr>"),
+					e.FI_Server_Port + "</td></tr>"
+				),
 				e.Circuits.forEach(function(t) {
 					$(a).find(".vifs tbody").append(
 						"<tr><td>" +

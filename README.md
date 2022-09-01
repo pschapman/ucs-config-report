@@ -89,6 +89,7 @@ The current stable version will always be in the master branch.
     - Corresponding updates to PS and JScript.  Makes data gathering and presentation for blades and rack servers almost identical.
   - Removed dead references to "Board Controller".
   - JScript - Additional line breaks for readability and editing
+  - Inventory gather for blades and rackmounts merged and placed in new function
 
 **Version 4.1 - 8/28/2022**
 - New Features
