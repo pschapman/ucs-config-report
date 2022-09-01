@@ -76,6 +76,20 @@ The current stable version will always be in the master branch.
 3. (Optional) Configure Scheduled Task (Windows) or cron job (Mac) to run the script on a regular basis
 
 ## What's New
+**Version 4.2 - TBD**
+- New Features
+  - Rackmount Adapters table data merged into Rackmount Servers on Inventory tab.  Rack mounts now presented in same way as blades.
+  - Power usage column headers indicate unit type for measurement (watts, volts, amps)
+  - Fixed: Server status absent on rack mounts.
+  - Fixed: CPU name display now matches blades.
+  - Fixed: Adapter column on blade inventory no longer empty.
+  - Fixed: VIF data now populates for rack mount servers
+- Code Revisions
+  - JSON schema change. Migrated standalone node "{domain}/Inventory/Rackmount_Adapters" to "{domian}/Inventory/Rackmounts/{item}/Adapters".
+    - Corresponding updates to PS and JScript.  Makes data gathering and presentation for blades and rack servers almost identical.
+  - Removed dead references to "Board Controller".
+  - JScript - Additional line breaks for readability and editing
+
 **Version 4.1 - 8/28/2022**
 - New Features
   - Tested on both linux and Mac

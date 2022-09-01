@@ -798,11 +798,11 @@ function Invoke-UcsDataGather {
     }
     # End IOM Inventory Collection
 
-    # Start Blade Inventory Collection
-
     # Get all memory and vif data for future iteration
     $memoryArray = Get-UcsMemoryUnit -Ucs $handle
     $paths = Get-UcsFabricPathEp -Ucs $handle
+
+    # Start Blade Inventory Collection
 
     # Set progress of current job
     $Process_Hash.Progress[$domain] = 36
@@ -821,6 +821,7 @@ function Invoke-UcsDataGather {
         $bladeHash.Status = $blade.OperState
         $bladeHash.Chassis = $blade.ChassisId
         $bladeHash.Slot = $blade.SlotId
+        # Get Model and Description common names and format the text
         ($bladeHash.Model,$bladeHash.Model_Description) = $equip_manufact_def | Where-Object {$_.Sku -ieq $($blade.Model)} | Select-Object Name,Description | ForEach-Object {($_.Name -replace "Cisco UCS ", ""),$_.Description}
         $bladeHash.Serial = $blade.Serial
         $bladeHash.Uuid = $blade.Uuid
@@ -850,7 +851,7 @@ function Invoke-UcsDataGather {
         # Array variable for storing blade adapter data
         $bladeHash.Adapters = @()
 
-        # Iterate through each blade adapter and grab relevant data
+        # Iterate through each blade adapter and grab detailed information
         $blade | Get-UcsAdaptorUnit | ForEach-Object {
             # Hash variable for storing current adapter data
             $adapterHash = @{}
@@ -950,30 +951,45 @@ function Invoke-UcsDataGather {
             $vifHash.Name = "Path " + $_.SwitchId + '/' + ($_.Dn | Select-String -pattern "(?<=path[-]).*(?=[/])")[0].Matches.Value
 
             # Gets peer port information filtered to the current path for adapter and fex host port
-            $vifPeers = $paths | Where-Object {$_.EpDn -match ($vif.EpDn | Select-String -pattern ".*(?=(.*[/]){2})").Matches.Value -and $_.Dn -match ($vif.Dn | Select-String -pattern ".*(?=(.*[/]){3})").Matches.Value -and $_.Dn -ne $vif.Dn}
-            # If Adapter PortId is greater than 1000 then format string as a port channel
-            if($vifPeers[1].PeerPortId -gt 1000) {
-                $vifHash.Adapter_Port = 'PC-' + $vifPeers[1].PeerPortId
+            $peer_epdn_prefix = ($vif.EpDn | Select-String -pattern ".*(?=(.*[/]){2})").Matches.Value
+            $vifPeers = $paths | Where-Object {$_.Dn -Match $blade.Dn -and $_.EpDn -match $peer_epdn_prefix -and $_.Dn -ne $vif.Dn}
+
+            if ($vifPeers) {
+                $fabric_host = $vifPeers | Where-Object {$_.Rn -match "fabric.*-to-hostpc"}
+                $host_adapter = $vifPeers | Where-Object {$_.Rn -match "hostpc-to-adaptorpc"}
+
+                # If Adapter PortId is greater than 1000 then format string as a port channel
+                if ($host_adapter.PeerPortId -gt 1000) {
+                    $vifHash.Adapter_Port = 'PC-' + $host_adapter.PeerPortId
+                } else {
+                # Else format in slot/port notation
+                    $vifHash.Adapter_Port = "$($host_adapter.PeerSlotId)/$($host_adapter.PeerPortId)"
+                }
+
+                # If FEX PortId is greater than 1000 then format string as a port channel
+                if($fabric_host.PortId -gt 1000) {
+                    $vifHash.Fex_Host_Port = 'PC-' + $fabric_host.PortId
+                } else {
+                # Else format in chassis/slot/port notation
+                    $vifHash.Fex_Host_Port = "$($fabric_host.ChassisId)/$($fabric_host.SlotId)/$($fabric_host.PortId)"
+                }
+
+                # If Network PortId is greater than 1000 then format string as a port channel
+                if($vif.PortId -gt 1000) {
+                    $vifHash.Fex_Network_Port = 'PC-' + $vif.PortId
+                } else {
+                # Else format in fabricId/slot/port notation
+                    $vifHash.Fex_Network_Port = $vif.PortId
+                }
+
+                # Server Port for current path as formatted in UCSM
+                $vifHash.FI_Server_Port = "$($vif.SwitchId)/$($vif.PeerSlotId)/$($vif.PeerPortId)"
             } else {
-            # Else format in slot/port notation
-                $vifHash.Adapter_Port = "$($vifPeers[1].PeerSlotId)/$($vifPeers[1].PeerPortId)"
+                $vifHash.Adapter_Port = "$($vif.PeerSlotId)/$($vif.PeerPortId)"
+                $vifHash.Fex_Host_Port = "N/A"
+                $vifHash.Fex_Network_Port = "N/A"
+                $vifHash.FI_Server_Port = "$($vif.SwitchId)/$($vif.SlotId)/$($vif.PortId)"
             }
-            # If FEX PortId is greater than 1000 then format string as a port channel
-            if($vifPeers[0].PortId -gt 1000) {
-                $vifHash.Fex_Host_Port = 'PC-' + $vifPeers[0].PortId
-            } else {
-            # Else format in chassis/slot/port notation
-                $vifHash.Fex_Host_Port = "$($vifPeers[0].ChassisId)/$($vifPeers[0].SlotId)/$($vifPeers[0].PortId)"
-            }
-            # If Network PortId is greater than 1000 then format string as a port channel
-            if($vif.PortId -gt 1000) {
-                $vifHash.Fex_Network_Port = 'PC-' + $vif.PortId
-            } else {
-            # Else format in fabricId/slot/port notation
-                $vifHash.Fex_Network_Port = $vif.PortId
-            }
-            # Server Port for current path as formatted in UCSM
-            $vifHash.FI_Server_Port = "$($vif.SwitchId)/$($vif.PeerSlotId)/$($vif.PeerPortId)"
 
             # Array variable for storing virtual circuit data
             $vifHash.Circuits = @()
@@ -1154,15 +1170,15 @@ function Invoke-UcsDataGather {
 
     # Start Rack Inventory Collection
 
-    # Set current job progress
+    # Set progress of current job
     $Process_Hash.Progress[$domain] = 48
 
-    # Array variable for storing rack server data
+    # Initialize array for storing rack data
     $DomainHash.Inventory.Rackmounts = @()
 
-    # Iterate through each rackmount server and grab relevant data
+    # Iterate through each rack server and grab relevant data
     Get-UcsRackUnit -Ucs $handle | ForEach-Object {
-        # Store current pipe variable and store to local variable
+        # Store current pipe variable to local variable
         $rack = $_
         # Hash variable for storing current rack server data
         $rackHash = @{}
@@ -1178,11 +1194,11 @@ function Invoke-UcsDataGather {
         $rackHash.Name = $rack.Name
         $rackHash.Service_Profile = $rack.AssignedToDn
 
-        # If no service profile exists set profile name to "Unassociated"
+        # If rack server doesn't have a service profile set profile name to Unassociated
         if(!($rackHash.Service_Profile)) {
             $rackHash.Service_Profile = "Unassociated"
         }
-        # Get child objects for pulling detailed information
+        # Get rack server child object for future iteration
         $childTargets = $rack | Get-UcsChild | Where-Object {$_.Rn -ieq "bios" -or $_.Rn -ieq "mgmt" -or $_.Rn -ieq "board"} | get-ucschild
 
         # Get rack CPU data
@@ -1202,22 +1218,23 @@ function Invoke-UcsDataGather {
 
         # Iterate through each server adapter and grab detailed information
         $rack | Get-UcsAdaptorUnit | ForEach-Object {
+            # Hash variable for storing current adapter data
             $adapterHash = @{}
             $adapter = $_
-            # Get common name of adapter model and format text
-            $adapterHash.Model = ($equip_manufact_def | Where-Object {$_.Sku -cmatch $($adapter.Model)}).Name -replace "Cisco UCS ", ""
+            # Get common name of adapter and format string
+            $adapterHash.Model = ($equip_manufact_def | Where-Object {$_.Sku -ieq $($adapter.Model)}).Name -replace "Cisco UCS ", ""
             $adapterHash.Name = 'Adaptor-' + $_.Id
             $adapterHash.Slot = $adapter.PciSlot
-            $adapterHash.Serial = $adapter.Serial
             $adapterHash.Fw = ($adapter | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
-            # Add adapter data to Rackmount_Adapters array variable
+            $adapterHash.Serial = $adapter.Serial
+            # Add current adapter hash to rack adapter array
             $rackHash.Adapters += $adapterHash
         }
 
         # Array variable for storing rack memory data
         $rackHash.Memory_Array = @()
         # Iterage through all memory tied to current server and grab relevant data
-        $memoryArray | Where-Object Dn -cmatch $rack.Dn | Select-Object Id,Location,Capacity,Clock | Sort-Object {($_.Id) -as [int]} | ForEach-Object {
+        $memoryArray | Where-Object {$_.Dn -match $rack.Dn} | Select-Object Id,Location,Capacity,Clock | Sort-Object {($_.Id) -as [int]} | ForEach-Object {
             # Hash variable for storing current memory data
             $memHash = @{}
             $memHash.Name = "Memory " + $_.Id
@@ -1246,6 +1263,7 @@ function Invoke-UcsDataGather {
             $controllerHash.Disk_Count = 0
             # Array variable for storing controller disks
             $controllerHash.Disks = @()
+            # Iterate through each local disk and grab relevant data
             $controller | Get-UcsStorageLocalDisk -Presence "equipped" | ForEach-Object {
                 # Store current pipe variable to local variable
                 $disk = $_
@@ -1281,32 +1299,74 @@ function Invoke-UcsDataGather {
             # Add controller hash variable to current rack hash storage array
             $rackHash.Storage += $controllerHash
         }
+
         # Array variable for storing VIF information for current rack
         $rackHash.VIFs = @()
         # Grab all circuits that match the current rack DN and are active or link-down
         $circuits = Get-UcsDcxVc -Ucs $handle -Filter "Dn -cmatch $($rack.Dn) -and (OperState -cmatch active -or OperState -cmatch link-down)" | Select-Object Dn,Id,OperBorderPortId,OperBorderSlotId,SwitchId,Vnic,LinkState
         # Iterate through all paths of type "mux-fabric" for the current rack
-        $paths | Where-Object {$_.Dn -Match $rack.Dn -and $_.CType -match "mux-fabric|switchpc-to-hostpc" -and $_.CType -notmatch "mux-fabric(.*)?[-]"} | ForEach-Object {
+        $paths | Where-Object {$_.Dn -Match $rack.Dn -and $_.CType -match "mux-fabric|switch-to-host" -and $_.CType -notmatch "mux-fabric(.*)?[-]"} | ForEach-Object {
             # Store current pipe variable to local variable
             $vif = $_
             # Hash variable for storing current VIF data
             $vifHash = @{}
+
             # The name of the current Path formatted to match the presentation in UCSM
             $vifHash.Name = "Path " + $_.SwitchId + '/' + ($_.Dn | Select-String -pattern "(?<=path[-]).*(?=[/])")[0].Matches.Value
-            # Gets peer port information filtered to the current path for adapter and fex host port
-            $vifPeers = $paths | Where-Object {$_.EpDn -match ($vif.EpDn | Select-String -pattern ".*(?=(.*[/]){2})").Matches.Value -and $_.Dn -match ($vif.Dn | Select-String -pattern ".*(?=(.*[/]){3})").Matches.Value -and $_.Dn -ne $vif.Dn}
 
-            if ($vifPeers.length -eq 1) {
-                $vifHash.Adapter_Port = "$($vifPeers[0].PeerSlotId)/$($vifPeers[0].PeerPortId)"
+            # Gets peer port information filtered to the current path for adapter and fex host port
+            $peer_epdn_prefix = ($vif.EpDn | Select-String -pattern ".*(?=(.*[/]){2})").Matches.Value
+            $vifPeers = $paths | Where-Object {$_.Dn -Match $rack.Dn -and $_.EpDn -match $peer_epdn_prefix -and $_.Dn -ne $vif.Dn}
+            # $vifPeers = $paths | Where-Object {$_.EpDn -match ($vif.EpDn | Select-String -pattern ".*(?=(.*[/]){2})").Matches.Value -and $_.Dn -match ($vif.Dn | Select-String -pattern ".*(?=(.*[/]){3})").Matches.Value -and $_.Dn -ne $vif.Dn}
+
+            if ($vifPeers) {
+                $fabric_host = $vifPeers | Where-Object {$_.Rn -match "fabric.*-to-hostpc"}
+                $host_adapter = $vifPeers | Where-Object {$_.Rn -match "hostpc-to-adaptorpc"}
+
+                # If Adapter PortId is greater than 1000 then format string as a port channel
+                if ($host_adapter.PeerPortId -gt 1000) {
+                    $vifHash.Adapter_Port = 'PC-' + $host_adapter.PeerPortId
+                } else {
+                # Else format in slot/port notation
+                    $vifHash.Adapter_Port = "$($host_adapter.PeerSlotId)/$($host_adapter.PeerPortId)"
+                }
+
+                # If FEX PortId is greater than 1000 then format string as a port channel
+                if($fabric_host.PortId -gt 1000) {
+                    $vifHash.Fex_Host_Port = 'PC-' + $fabric_host.PortId
+                } else {
+                # Else format in chassis/slot/port notation
+                    $vifHash.Fex_Host_Port = "$($fabric_host.ChassisId)/$($fabric_host.SlotId)/$($fabric_host.PortId)"
+                }
+
+                # If Network PortId is greater than 1000 then format string as a port channel
+                if($vif.PortId -gt 1000) {
+                    $vifHash.Fex_Network_Port = 'PC-' + $vif.PortId
+                } else {
+                # Else format in fabricId/slot/port notation
+                    $vifHash.Fex_Network_Port = $vif.PortId
+                }
+            } else {
+                $vifHash.Adapter_Port = "$($vif.PeerSlotId)/$($vif.PeerPortId)"
                 $vifHash.Fex_Host_Port = "N/A"
                 $vifHash.Fex_Network_Port = "N/A"
                 $vifHash.FI_Server_Port = "$($vif.SwitchId)/$($vif.SlotId)/$($vif.PortId)"
-            } else {
-                $vifHash.Adapter_Port = "$($vifPeers[0].PeerSlotId)/$($vifPeers[1].PeerPortId)"
-                $vifHash.Fex_Host_Port = "$($vifPeers[1].ChassisId)/$($vifPeers[1].SlotId)/$($vifPeers[1].PortId)"
-                $vifHash.Fex_Network_Port = $vifPeers[0].PortId
-                $vifHash.FI_Server_Port = "$($vif.SwitchId)/$($vif.PeerSlotId)/$($vif.PeerPortId)"
+
+                # if ($vifPeers.length -eq 1) {
+                #     $vifHash.Adapter_Port = "$($vifPeers[0].PeerSlotId)/$($vifPeers[0].PeerPortId)"
+                #     $vifHash.Fex_Host_Port = "N/A"
+                #     $vifHash.Fex_Network_Port = "N/A"
+                # } else {
+                #     $vifHash.Adapter_Port = "$($vifPeers[0].PeerSlotId)/$($vifPeers[1].PeerPortId)"
+                #     $vifHash.Fex_Host_Port = "$($vifPeers[1].ChassisId)/$($vifPeers[1].SlotId)/$($vifPeers[1].PortId)"
+                #     $vifHash.Fex_Network_Port = $vifPeers[0].PortId
+                #     $vifHash.FI_Server_Port = "$($vif.SwitchId)/$($vif.PeerSlotId)/$($vif.PeerPortId)"
+                # }
             }
+
+            # Server Port for current path as formatted in UCSM
+            # $vifHash.FI_Server_Port = "$($vif.SwitchId)/$($vif.PeerSlotId)/$($vif.PeerPortId)"
+
 
             # Array variable for storing virtual circuit data
             $vifHash.Circuits = @()
@@ -1327,10 +1387,13 @@ function Invoke-UcsDataGather {
                 # Assume that the circuit is pinned to a single uplink port
                     $vcHash.FI_Uplink = "$($_.SwitchId)/$($_.OperBorderSlotId)/$($_.OperBorderPortId)"
                 }
+                # Add current circuit data to loop array variable
                 $vifHash.Circuits += $vcHash
             }
+            # Add vif data to rack hash
             $rackHash.VIFs += $vifHash
         }
+
         # Get the configured boot definition of the current rack
 
         # Array variable for storing boot order data
@@ -1350,13 +1413,14 @@ function Invoke-UcsDataGather {
             $policy | Get-UcsChild | Sort-Object Order | ForEach-Object {
                 # Store current pipe variable to local variable
                 $entry = $_
-                # =======================================================#
-                # Switch statement using the device type as the target   #
-                # Variable Definitions:                                  #
-                #     Level1 - VNIC, Order                               #
-                #     Level2 - Type, VNIC Name                           #
-                #     Level3 - Lun, Type, WWN                            #
-                # =======================================================#
+                #===========================================================#
+                #    Switch statement using the device type as the target   #
+                #                                                           #
+                #    Variable Definitions:                                  #
+                #        Level1 - VNIC, Order                               #
+                #        Level2 - Type, VNIC Name                           #
+                #        Level3 - Lun, Type, WWN                            #
+                #===========================================================#
                 Switch ($entry.Type) {
                     # Matches either local media or SAN storage
                     'storage' {
@@ -1401,7 +1465,7 @@ function Invoke-UcsDataGather {
                         if ($entryHash.Level1.Access -match 'read-only') {
                             $entryHash.Level1.Type = 'CD/DVD'
                         } else {
-                            $entryHash.Level1.Type = 'floppy'
+                            $entryHash.Level1.Type = 'Floppy'
                         }
                         $bootHash.Entries += $entryHash
                     }
@@ -1476,7 +1540,7 @@ function Invoke-UcsDataGather {
             # Add boot entry data to actual boot order array
             $rackHash.Actual_Boot_Order += $bootHash
         }
-        # Add racmount server hash to Inventory array
+        # Add rackmount server hash to DomainHash variable
         $DomainHash.Inventory.Rackmounts += $rackHash
     }
     # End Rack Inventory Collection
@@ -1968,7 +2032,6 @@ function Invoke-UcsDataGather {
             # Add current profile to template profile array
             $DomainHash.Profiles[$templateId].Profiles += $profileHash
         }
-
     }
     # End Service Profile Collection
 
