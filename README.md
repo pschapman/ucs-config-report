@@ -132,6 +132,7 @@ The current stable version will always be in the master branch.
 - [ ] Add reporting for the following use cases
   - [ ] Port Channels
   - [ ] Disjoint L2
+  - [ ] Call Home Detail
 
 [1]: https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-macos?view=powershell-7.2
 [2]: https://kb.vmware.com/s/article/59235

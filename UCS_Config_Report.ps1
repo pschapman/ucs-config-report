@@ -528,7 +528,7 @@ function Get-DeviceStats {
     return $stat_coll
 }
 
-function Invoke-InventoryServer {
+function Get-InventoryServerData {
     <#
     .DESCRIPTION
         Extract inventory data for blades or rackmount servers
@@ -932,6 +932,70 @@ function Invoke-InventoryServer {
     # End server Inventory Collection
     return $inventory_data
 }
+
+function Get-SystemData {
+    <#
+    .DESCRIPTION
+        Extract inventory data for blades or rackmount servers
+    .PARAMETER $handle
+        Handle (object reference) to target UCS domain
+    .PARAMETER $DomainStatus
+        Object reference to results of Get-UcsStatus
+    .OUTPUTS
+        Hashtable
+    #>
+
+    param (
+        [Parameter(Mandatory)]$handle,
+        [Parameter(Mandatory)]$DomainStatus
+    )
+    $Data = @{}
+    $Data.Chassis_Power = @()
+    $Data.Server_Power = @()
+    $Data.Server_Temp = @()
+
+    # Get UCS Cluster State
+    $Data.VIP = $DomainStatus.VirtualIpv4Address
+    $Data.UCSM = (Get-UcsMgmtController -Ucs $handle -Subject system | Get-UcsFirmwareRunning).Version
+    $Data.HA_Ready = $DomainStatus.HaReady
+    # Get Full State and Logical backup configuration
+    $Data.Backup_Policy = (Get-UcsMgmtBackupPolicy -Ucs $handle | Select-Object AdminState).AdminState
+    $Data.Config_Policy = (Get-UcsMgmtCfgExportPolicy -Ucs $handle | Select-Object AdminState).AdminState
+    # Get Call Home admin state
+    $Data.CallHome = (Get-UcsCallHome -Ucs $handle | Select-Object AdminState).AdminState
+
+    # Get Chassis power statistics
+    $cmd_args = @{
+        UcsStats = $statistics
+        DnFilter = "sys/chassis-[0-9]+/stats"
+        RnFilter = "stats"
+        StatList = @("Dn","InputPower","InputPowerAvg","InputPowerMax","OutputPower","OutputPowerAvg","OutputPowerMax","Suspect")
+    }
+    $Data.Chassis_Power += Get-DeviceStats @cmd_args -IsChassis
+    $Data.Chassis_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]stats)',"")}
+
+    # Get Blade and Rack Mount power statistics
+    $cmd_args = @{
+        UcsStats = $statistics
+        DnFilter = "sys/.*/board/power-stats"
+        RnFilter = "power-stats"
+        StatList = @("Dn","ConsumedPower","ConsumedPowerAvg","ConsumedPowerMax","InputCurrent","InputCurrentAvg","InputVoltage","InputVoltageAvg","Suspect")
+    }
+    $Data.Server_Power += Get-DeviceStats @cmd_args -IsServer
+    $Data.Server_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]board.*)',"")}
+
+    # Get Blade and Rack Mount temperature statistics
+    $cmd_args = @{
+        UcsStats = $statistics
+        DnFilter = "sys/.*/board/temp-stats"
+        RnFilter = "temp-stats"
+        StatList = @("Dn","FmTempSenIo","FmTempSenIoAvg","FmTempSenIoMax","FmTempSenRear","FmTempSenRearAvg","FmTempSenRearMax","FrontTemp","FrontTempAvg","FrontTempMax","Ioh1Temp","Ioh1TempAvg","Ioh1TempMax","Suspect")
+    }
+    $Data.Server_Temp += Get-DeviceStats @cmd_args -IsServer
+    $Data.Server_Temp | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]board.*)',"")}
+
+    return $Data
+}
 function Invoke-UcsDataGather {
     param (
         [Parameter(Mandatory)]$domain,
@@ -943,7 +1007,11 @@ function Invoke-UcsDataGather {
     $handle = Connect-Ucs $Process_Hash.Creds[$domain].VIP -Credential $Process_Hash.Creds[$domain].Creds
 
     # Get all system performance statistics
-    if (!$NoStats) {$statistics = (Get-UcsStatistics -Ucs $handle).Where({$_.Rn -match "power|temp|vnic|rx|tx-stats|^stats"})} else {$statistics = ""}
+    if (!$NoStats) {
+        $statistics = (Get-UcsStatistics -Ucs $handle).Where({$_.Rn -match "power|temp|vnic|rx|tx-stats|^stats"})
+    } else {
+        $statistics = ""
+    }
     # Get capabilities data from domain embedded catalogs
     $equip_localdsk_def = Get-UcsEquipmentLocalDiskDef -Ucs $handle
     $equip_manufact_def = Get-UcsEquipmentManufacturingDef -Ucs $handle
@@ -953,9 +1021,6 @@ function Invoke-UcsDataGather {
     Start-UcsTransaction -Ucs $handle
     $DomainHash = @{}
     $DomainHash.System = @{}
-    $DomainHash.System.Chassis_Power = @()
-    $DomainHash.System.Server_Power = @()
-    $DomainHash.System.Server_Temp = @()
     $DomainHash.Inventory = @{}
     $DomainHash.Inventory.Blades = @()
     $DomainHash.Inventory.Rackmounts = @()
@@ -965,52 +1030,18 @@ function Invoke-UcsDataGather {
     $DomainHash.San = @{}
     $DomainHash.Faults = @()
 
+    # Get status. Used by system data and FI data
+    $DomainStatus = Get-UcsStatus -Ucs $handle
+    $DomainName = $DomainStatus.Name
     #===================================#
     #    Start System Data Collection    #
     #===================================#
     $Process_Hash.Progress[$domain] = 1
-
-    # Get UCS Cluster State
-    $system = Get-UcsStatus -Ucs $handle | Select-Object Name,VirtualIpv4Address,HaReady,FiALeadership,FiAManagementServicesState,FiBLeadership,FiBManagementServicesState
-    $DomainName = $system.Name
-    $DomainHash.System.VIP = $system.VirtualIpv4Address
-    $DomainHash.System.UCSM = (Get-UcsMgmtController -Ucs $handle -Subject system | Get-UcsFirmwareRunning).Version
-    $DomainHash.System.HA_Ready = $system.HaReady
-    # Get Full State and Logical backup configuration
-    $DomainHash.System.Backup_Policy = (Get-UcsMgmtBackupPolicy -Ucs $handle | Select-Object AdminState).AdminState
-    $DomainHash.System.Config_Policy = (Get-UcsMgmtCfgExportPolicy -Ucs $handle | Select-Object AdminState).AdminState
-    # Get Call Home admin state
-    $DomainHash.System.CallHome = (Get-UcsCallHome -Ucs $handle | Select-Object AdminState).AdminState
-
-    # Get Chassis power statistics
     $cmd_args = @{
-        UcsStats = $statistics
-        DnFilter = "sys/chassis-[0-9]+/stats"
-        RnFilter = "stats"
-        StatList = @("Dn","InputPower","InputPowerAvg","InputPowerMax","OutputPower","OutputPowerAvg","OutputPowerMax","Suspect")
+        handle = $handle
+        DomainStatus = $DomainStatus
     }
-    $DomainHash.System.Chassis_Power += Get-DeviceStats @cmd_args -IsChassis
-    $DomainHash.System.Chassis_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]stats)',"")}
-
-    # Get Blade and Rack Mount power statistics
-    $cmd_args = @{
-        UcsStats = $statistics
-        DnFilter = "sys/.*/board/power-stats"
-        RnFilter = "power-stats"
-        StatList = @("Dn","ConsumedPower","ConsumedPowerAvg","ConsumedPowerMax","InputCurrent","InputCurrentAvg","InputVoltage","InputVoltageAvg","Suspect")
-    }
-    $DomainHash.System.Server_Power += Get-DeviceStats @cmd_args -IsServer
-    $DomainHash.System.Server_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]board.*)',"")}
-
-    # Get Blade and Rack Mount temperature statistics
-    $cmd_args = @{
-        UcsStats = $statistics
-        DnFilter = "sys/.*/board/temp-stats"
-        RnFilter = "temp-stats"
-        StatList = @("Dn","FmTempSenIo","FmTempSenIoAvg","FmTempSenIoMax","FmTempSenRear","FmTempSenRearAvg","FmTempSenRearMax","FrontTemp","FrontTempAvg","FrontTempMax","Ioh1Temp","Ioh1TempAvg","Ioh1TempMax","Suspect")
-    }
-    $DomainHash.System.Server_Temp += Get-DeviceStats @cmd_args -IsServer
-    $DomainHash.System.Server_Temp | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]board.*)',"")}
+    $DomainHash.System = Get-SystemData @cmd_args
 
     #===================================#
     #    Start Inventory Collection        #
@@ -1033,11 +1064,11 @@ function Invoke-UcsDataGather {
         $fiHash.Thermal = $fi.Thermal
         # Get leadership role and management service state
         if($fi.Id -eq "A") {
-            $fiHash.Role = $system.FiALeadership
-            $fiHash.State = $system.FiAManagementServicesState
+            $fiHash.Role = $DomainStatus.FiALeadership
+            $fiHash.State = $DomainStatus.FiAManagementServicesState
         } else {
-            $fiHash.Role = $system.FiBLeadership
-            $fiHash.State = $system.FiAManagementServicesState
+            $fiHash.Role = $DomainStatus.FiBLeadership
+            $fiHash.State = $DomainStatus.FiAManagementServicesState
         }
 
         # Get the common name of the fi from the manufacturing definition and format the text
@@ -1249,13 +1280,13 @@ function Invoke-UcsDataGather {
     # Set progress of current job
     $Process_Hash.Progress[$domain] = 36
     Write-Host "`t36% | $(Get-ElapsedTime -FirstTimestamp $start) | Blade Data"
-    $DomainHash.Inventory.Blades += Invoke-InventoryServer @cmd_args -IsBlade
+    $DomainHash.Inventory.Blades += Get-InventoryServerData @cmd_args -IsBlade
 
     # Start Rack Inventory Collection
     # Set progress of current job
     $Process_Hash.Progress[$domain] = 48
     Write-Host "`t48% | $(Get-ElapsedTime -FirstTimestamp $start) | Rack Server Data"
-    $DomainHash.Inventory.Rackmounts += Invoke-InventoryServer @cmd_args
+    $DomainHash.Inventory.Rackmounts += Get-InventoryServerData @cmd_args
 
 
     # Start Policy Data Collection
