@@ -1,5 +1,5 @@
 ﻿<!DOCTYPE html>
-<!-- Version: 4.2 (Must be the same as UCS_Config_Report.ps1 due to JSON schema changes.) -->
+<!-- JSON Schema Version: 4.2 (Must be the same as UCS_Config_Report.ps1 due to JSON schema changes.) -->
 <html>
 
 <head>
@@ -3947,7 +3947,8 @@
 				$(a).find(".panel-title a").prop("href", "#" + o + "-Collapse").attr("data-parent", "#" + o),
 				$(a).find(".controller-collapse").prop("id", o + "-Collapse"),
 				$(a).find(".controller-title").after("Controller SAS " + e.Id),
-				$(a).addClass("Controller-Details"), $(a).find(".blade-controller-id").text(e.Id),
+				$(a).addClass("Controller-Details"),
+				$(a).find(".blade-controller-id").text(e.Id),
 				$(a).find(".blade-controller-vendor").text(e.Vendor),
 				$(a).find(".blade-controller-revision").text(e.Revision),
 				$(a).find(".blade-controller-raid").text(e.RaidSupport),
@@ -3957,14 +3958,15 @@
 				$(a).find(".blade-controller-pid").text(e.Model),
 				$(a).find(".blade-controller-serial").text(e.Serial),
 				$(a).find(".blade-controller-status").text(e.ControllerStatus),
-				$(".Disk-Details").empty(),
-				$.each(e.Disks, function(t, e) {
-					var o = "controller-group-disk-" + t,
+				// $(".Disk-Details").empty(),
+				$.each(e.Disks, function(i, e) {
+					var o = "controller-group-" + t + "-disk-" + i,
 						n = $("#Blade-Disk-Template").clone().prop("id", o).removeClass("hidden");
 					$(n).find(".panel-title a").prop("href", "#" + o + "-Collapse").attr("data-parent", "#" + o),
 					$(n).find(".panel-collapse").prop("id", o + "-Collapse"),
 					$(n).find(".heading-icon:last").after("Disk " + e.Id),
-					$(n).addClass("Disk-Details"), $(n).find(".blade-disk-id").text(e.Id),
+					$(n).addClass("Disk-Details"),
+					$(n).find(".blade-disk-id").text(e.Id),
 					$(n).find(".blade-disk-vendor").text(e.Vendor),
 					$(n).find(".blade-disk-serial").text(e.Serial),
 					$(n).find(".blade-disk-pid").text(e.Pid),
@@ -4099,7 +4101,8 @@
 				var o = "controller-group-" + t,
 					a = $("#Blade-Storage-Template").clone().prop("id", o).removeClass("hidden");
 				$(a).find(".panel-title a").prop("href", "#" + o + "-Collapse").attr("data-parent", "#" + o),
-				$(a).find(".controller-collapse").prop("id", o + "-Collapse"), $(a).find(".controller-title").after("Controller SAS " + e.Id),
+				$(a).find(".controller-collapse").prop("id", o + "-Collapse"),
+				$(a).find(".controller-title").after("Controller SAS " + e.Id),
 				$(a).addClass("Controller-Details"),
 				$(a).find(".blade-controller-id").text(e.Id),
 				$(a).find(".blade-controller-vendor").text(e.Vendor),
@@ -4111,11 +4114,31 @@
 				$(a).find(".blade-controller-pid").text(e.Model),
 				$(a).find(".blade-controller-serial").text(e.Serial),
 				$(a).find(".blade-controller-status").text(e.ControllerStatus),
-				$(".Disk-Details").empty(),
-				$.each(e.Disks, function(t, e) {
-					var o = "controller-group-disk-" + t,
+				// $(".Disk-Details").empty(),
+				$.each(e.Disks, function(i, e) {
+					var o = "controller-group-" + t + "-disk-" + i,
 						n = $("#Blade-Disk-Template").clone().prop("id", o).removeClass("hidden");
-					$(n).find(".panel-title a").prop("href", "#" + o + "-Collapse").attr("data-parent", "#" + o), $(n).find(".panel-collapse").prop("id", o + "-Collapse"), $(n).find(".heading-icon:last").after("Disk " + e.Id), $(n).addClass("Disk-Details"), $(n).find(".blade-disk-id").text(e.Id), $(n).find(".blade-disk-vendor").text(e.Vendor), $(n).find(".blade-disk-serial").text(e.Serial), $(n).find(".blade-disk-pid").text(e.Pid), $(n).find(".blade-disk-vid").text(e.Vid), $(n).find(".blade-disk-driveState").text(e.Drive_State), $(n).find(".blade-disk-size").text(e.Size), $(n).find(".blade-disk-numBlocks").text(e.Blocks), $(n).find(".blade-disk-technology").text(e.Technology), $(n).find(".blade-disk-powerState").text(e.Power_State), $(n).find(".blade-disk-linkSpeed").text(e.Link_Speed), $(n).find(".blade-disk-blockSize").text(e.Block_Size), $(n).find(".blade-disk-tts").text(e.Track_To_Seek), $(n).find(".blade-disk-operability").text(e.Operability), $(n).find(".blade-disk-presence").text(e.Presence), $(n).find(".blade-disk-runningVersion").text(e.Running_Version), $(a).find(".controller-collapse .panel-body:first").append(n)
+					$(n).find(".panel-title a").prop("href", "#" + o + "-Collapse").attr("data-parent", "#" + o),
+					$(n).find(".panel-collapse").prop("id", o + "-Collapse"),
+					$(n).find(".heading-icon:last").after("Disk " + e.Id),
+					$(n).addClass("Disk-Details"),
+					$(n).find(".blade-disk-id").text(e.Id),
+					$(n).find(".blade-disk-vendor").text(e.Vendor),
+					$(n).find(".blade-disk-serial").text(e.Serial),
+					$(n).find(".blade-disk-pid").text(e.Pid),
+					$(n).find(".blade-disk-vid").text(e.Vid),
+					$(n).find(".blade-disk-driveState").text(e.Drive_State),
+					$(n).find(".blade-disk-size").text(e.Size),
+					$(n).find(".blade-disk-numBlocks").text(e.Blocks),
+					$(n).find(".blade-disk-technology").text(e.Technology),
+					$(n).find(".blade-disk-powerState").text(e.Power_State),
+					$(n).find(".blade-disk-linkSpeed").text(e.Link_Speed),
+					$(n).find(".blade-disk-blockSize").text(e.Block_Size),
+					$(n).find(".blade-disk-tts").text(e.Track_To_Seek),
+					$(n).find(".blade-disk-operability").text(e.Operability),
+					$(n).find(".blade-disk-presence").text(e.Presence),
+					$(n).find(".blade-disk-runningVersion").text(e.Running_Version),
+					$(a).find(".controller-collapse .panel-body:first").append(n)
 				}),
 				$(a).find(".panel-collapse").on("hidden.bs.collapse", function(t, e) {
 					$("#" + t.target.id).parent().find(".panel-heading:first .glyphicon-minus:first").addClass("hidden"),
