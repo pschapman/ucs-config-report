@@ -31,9 +31,9 @@ Run Script with no interaction and email report. UCS cache file must be populate
 task.
 
 .NOTES
-Version: 4.2
+Version: 4.3
 Attributions::
-    Author: Paul S. Chapman (pchapman@convergeone.com) 08/28/2022
+    Author: Paul S. Chapman (pchapman@convergeone.com) 09/03/2022
     History: UCS Configuration Report forked from UCS Health Check v2.6
     Source: Brandon Beck (robbeck@cisco.com) 05/11/2014
     Contribution: Marcello Turano
@@ -463,7 +463,7 @@ function Get-ElapsedTime {
         [Parameter(Mandatory)]$FirstTimestamp
     )
     $run_time = (Get-Date) - $FirstTimestamp
-    return "$($run_time.Hours) hrs, $($run_time.Minutes) mins, $($run_time.Seconds).$($run_time.Milliseconds) secs"
+    return "$($run_time.Hours)h, $($run_time.Minutes)m, $($run_time.Seconds).$(([string]$run_time.Milliseconds).PadLeft(3,'0'))s"
 }
 
 function Get-DeviceStats {
@@ -478,22 +478,50 @@ function Get-DeviceStats {
         String for case sensitive regex match on object RN
     .PARAMETER $StatList
         Array of desired returned stats (e.g., @(TotalBytes,TotalPackets))
-        #>
+    .PARAMETER $IsChassis
+        Flag indicating stat lookup is for a chassis and that real DN must be returned. Used for NoStats operation.
+    .PARAMETER $IsServer
+        Flag indicating stat lookup is for a server and that real DN must be returned. Used for NoStats operation.
+    #>
     param (
         [Parameter(Mandatory)] $UcsStats,
         [Parameter(Mandatory)] $DnFilter,
         [Parameter(Mandatory)] $RnFilter,
-        [Parameter(Mandatory)] $StatList
+        [Parameter(Mandatory)] $StatList,
+        [Switch]$IsChassis,
+        [Switch]$IsServer
     )
     if ($NoStats) {
-        $stat_coll = @{}
-        $StatList | ForEach-Object {
-            # if ($_ -match "Dn") {Write-Host "Hmmm.... $($DnFilter)"}
-            $stat_coll[$_] = 0
+        if ($IsChassis) {
+            # Get DNs for all chassis.
+            $dn_set = (Get-UcsChassis -Ucs $handle).Dn
+        } elseif ($IsServer) {
+            # Get DNs for all servers. Remove null values from resulting array, if present.
+            $dn_set = ((Get-UcsBlade).Dn + (Get-UcsRackUnit).Dn).Where({$null -ne $_})
+        }
+
+        # Initialize variable for set of stats
+        $stat_coll = @()
+
+        if ($dn_set) {
+            # Loop through all DNs and set empty stats
+            foreach ($dn in $dn_set) {
+                $statHash = @{}
+                foreach ($stat in $StatList) {
+                    if ($stat -eq "Dn") {$statHash[$stat] = $dn} else {$statHash[$stat] = 0}
+                }
+                $stat_coll += $statHash
+            }
+        } elseif (!$IsChassis -and !$IsServer) {
+            $statHash = @{}
+            foreach ($stat in $StatList) {
+                $statHash[$stat] = 0
+            }
+            $stat_coll += $statHash
         }
     } else {
         # $start_time = Get-Date
-        $stat_coll = $UcsStats.Where({$_.Dn -cmatch "$($DnFilter)" -and $_.Rn -cmatch "$($RnFilter)"}) | Select-Object $StatList
+        $stat_coll = $UcsStats.Where({$_.Dn -cmatch $DnFilter -and $_.Rn -cmatch $RnFilter}) | Select-Object $StatList
         # Write-Host "Stats Lookup Time: $(Get-ElapsedTime -FirstTimestamp $start_time)"
     }
 
@@ -915,7 +943,7 @@ function Invoke-UcsDataGather {
     $handle = Connect-Ucs $Process_Hash.Creds[$domain].VIP -Credential $Process_Hash.Creds[$domain].Creds
 
     # Get all system performance statistics
-    if (!$NoStats) {$statistics = Get-UcsStatistics -Ucs $handle} else {$statistics = ""}
+    if (!$NoStats) {$statistics = (Get-UcsStatistics -Ucs $handle).Where({$_.Rn -match "power|temp|vnic|rx|tx-stats|^stats"})} else {$statistics = ""}
     # Get capabilities data from domain embedded catalogs
     $equip_localdsk_def = Get-UcsEquipmentLocalDiskDef -Ucs $handle
     $equip_manufact_def = Get-UcsEquipmentManufacturingDef -Ucs $handle
@@ -925,6 +953,9 @@ function Invoke-UcsDataGather {
     Start-UcsTransaction -Ucs $handle
     $DomainHash = @{}
     $DomainHash.System = @{}
+    $DomainHash.System.Chassis_Power = @()
+    $DomainHash.System.Server_Power = @()
+    $DomainHash.System.Server_Temp = @()
     $DomainHash.Inventory = @{}
     $DomainHash.Inventory.Blades = @()
     $DomainHash.Inventory.Rackmounts = @()
@@ -952,37 +983,34 @@ function Invoke-UcsDataGather {
     $DomainHash.System.CallHome = (Get-UcsCallHome -Ucs $handle | Select-Object AdminState).AdminState
 
     # Get Chassis power statistics
-    $DomainHash.System.Chassis_Power = @()
     $cmd_args = @{
         UcsStats = $statistics
         DnFilter = "sys/chassis-[0-9]+/stats"
         RnFilter = "stats"
         StatList = @("Dn","InputPower","InputPowerAvg","InputPowerMax","OutputPower","OutputPowerAvg","OutputPowerMax","Suspect")
     }
-    $DomainHash.System.Chassis_Power += Get-DeviceStats @cmd_args
+    $DomainHash.System.Chassis_Power += Get-DeviceStats @cmd_args -IsChassis
     $DomainHash.System.Chassis_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]stats)',"")}
 
     # Get Blade and Rack Mount power statistics
-    $DomainHash.System.Server_Power = @()
     $cmd_args = @{
         UcsStats = $statistics
         DnFilter = "sys/.*/board/power-stats"
         RnFilter = "power-stats"
         StatList = @("Dn","ConsumedPower","ConsumedPowerAvg","ConsumedPowerMax","InputCurrent","InputCurrentAvg","InputVoltage","InputVoltageAvg","Suspect")
     }
-    $DomainHash.System.Server_Power += Get-DeviceStats @cmd_args
-    $DomainHash.System.Server_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('([/]board.*)',"")}
+    $DomainHash.System.Server_Power += Get-DeviceStats @cmd_args -IsServer
+    $DomainHash.System.Server_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]board.*)',"")}
 
     # Get Blade and Rack Mount temperature statistics
-    $DomainHash.System.Server_Temp = @()
     $cmd_args = @{
         UcsStats = $statistics
         DnFilter = "sys/.*/board/temp-stats"
         RnFilter = "temp-stats"
         StatList = @("Dn","FmTempSenIo","FmTempSenIoAvg","FmTempSenIoMax","FmTempSenRear","FmTempSenRearAvg","FmTempSenRearMax","FrontTemp","FrontTempAvg","FrontTempMax","Ioh1Temp","Ioh1TempAvg","Ioh1TempMax","Suspect")
     }
-    $DomainHash.System.Server_Temp += Get-DeviceStats @cmd_args
-    $DomainHash.System.Server_Temp | ForEach-Object {$_.Dn = $_.Dn -replace ('([/]board.*)',"")}
+    $DomainHash.System.Server_Temp += Get-DeviceStats @cmd_args -IsServer
+    $DomainHash.System.Server_Temp | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]board.*)',"")}
 
     #===================================#
     #    Start Inventory Collection        #
