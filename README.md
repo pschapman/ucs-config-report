@@ -79,9 +79,11 @@ The current stable version will always be in the master branch.
 **Version 4.3 - TBD**
 - New Features
   - NoStats CLI option now fully functional
+  - Fixed: Multi-controller servers now show disks for all controllers.
 - Code Revisions
   - Major performance improvement on stats lookup by filtering initial results.
     - Test domain with 1 chassis and 4 blades had ~10K stats records. Filter reduced to ~700. Individual lookups reduced from ~500ms to ~20ms.
+  - Variable name updates. Duplicate boot order code removed.
 
 **Version 4.2 - 9/1/2022**
 - New Features

@@ -31,7 +31,8 @@ Run Script with no interaction and email report. UCS cache file must be populate
 task.
 
 .NOTES
-Version: 4.3
+Script Version: 4.3
+JSON Schema Version 4.2
 Attributions::
     Author: Paul S. Chapman (pchapman@convergeone.com) 09/03/2022
     History: UCS Configuration Report forked from UCS Health Check v2.6
@@ -528,13 +529,133 @@ function Get-DeviceStats {
     return $stat_coll
 }
 
+function Get-ConfiguredBootOrder {
+    param (
+        [Parameter(Mandatory)]$BootPolicies
+    )
+    # Tier nested entries for display:
+    #   BootPolicies (collection)
+    #       |---BootPolicy (obj) - High level descriptors
+    #       |   |---BootItems (collection) (unordered - needs sort)
+    #       |   |   |---BootItem (obj) - Acquire high level type from Type (storage, virtual-media, lan, etc.)
+    #       |   |   |   |
+    #       |   |   |   |---[if]Rn=boot-security (special case) - Get SecureBoot attribute for top level block ***=== Future ===***
+    #       |   |   |   |
+    #       |   |   |   |---[if]virtual-media - Level1 (BootItem obj)
+    #       |   |   |   |---[if]efi-shell - Level1 (BootItem obj) ***=== Future ===***
+    #       |   |   |   |---[if]storage - BootItem > ItemType (child obj) > Level1 (child obj)
+    #       |   |   |   |---[if]san - Level1 (BootItem obj) > Level2 (Vnics child coll) > Level3 (SAN Image child coll)
+    #       |   |   |   |---[if]iscsi - Level1 (BootItem obj) > Level2 (Path child coll)
+    #       |   |   |   |---[if]lan - Level1 (BootItem obj) > Level2 (Path child coll)
+
+    $Data = @()
+
+    # Iterate through all boot parameters for current server
+    foreach ($BootPolicy in $BootPolicies) {
+    # $server | Get-UcsBootDefinition | ForEach-Object {
+        # Store current pipe variable to local variable
+        # $BootPolicy = $_
+        # Hash variable for storing current boot data
+        $BootPolicyData = @{}
+
+        # Grab informational data points from current policy
+        $BootPolicyData.Dn = $BootPolicy.Dn
+        $BootPolicyData.Description = $BootPolicy.Descr
+        $BootPolicyData.BootMode = $BootPolicy.BootMode
+        $BootPolicyData.EnforceVnicName = $BootPolicy.EnforceVnicName
+        $BootPolicyData.Name = $BootPolicy.Name
+        $BootPolicyData.RebootOnUpdate = $BootPolicy.RebootOnUpdate
+        $BootPolicyData.Owner = $BootPolicy.Owner
+
+        # Array variable for boot policy entries
+        $BootPolicyData.Entries = @()
+
+        # Get all child objects of the current policy and sort by boot order
+        $BootItems = $BootPolicy | Get-UcsChild | Sort-Object Order
+        foreach ($BootItem in $BootItems) {
+            Switch ($BootItem.Type) {
+                # Match local storage types
+                'storage' {
+                    # Get Level 1 data only from child object 2 steps down from current boot item
+                    $LevelData = @{}
+                    $LevelData.Level1 = $BootItem | Get-UcsChild | Get-UcsChild | Select-Object Type,Order
+                    $BootPolicyData.Entries += $LevelData
+                }
+
+                # Match virtual media types
+                'virtual-media' {
+                    # Get Level 1 data only from current boot item
+                    $LevelData = @{}
+                    $LevelData.Level1 = $BootItem | Select-Object Type,Order,Access
+
+                    # Use access level to determine media type
+                    if ($LevelData.Level1.Access -match 'read-only') {
+                        $LevelData.Level1.Type = 'CD/DVD'
+                    } else {
+                        $LevelData.Level1.Type = 'Floppy'
+                    }
+                    $BootPolicyData.Entries += $LevelData
+                }
+
+                # Match LAN boot types
+                'lan' {
+                    # Get Level 1 data from current boot item and Level 2 from child
+                    $LevelData = @{}
+                    $LevelData.Level1 = $BootItem | Select-Object Type,Order
+                    $LevelData.Level2 = @()
+                    $LevelData.Level2 += $BootItem | Get-UcsChild | Select-Object VnicName,Type
+                    $BootPolicyData.Entries += $LevelData
+                }
+                # Match SAN boot types
+                'san' {
+                    # Get Level 1 data from current boot item, Level 2 from each child (Vnic), and Level 3 from
+                    # children of Vnics
+                    $LevelData = @{}
+                    $LevelData.Level1 = $BootItem | Select-Object Type,Order
+                    $LevelData.Level2 = @()
+
+                    $Vnics = $BootItem | Get-UcsChild | Sort-Object Type
+                    foreach ($Vnic in $Vnics) {
+                        # Hash variable for storing current san entry data
+                        $VnicData = @{}
+                        $VnicData.Type = $Vnic.Type
+                        $VnicData.VnicName = $Vnic.VnicName
+                        $VnicData.Level3 = @()
+                        $VnicData.Level3 += $Vnic | Get-UcsChild | Sort-Object Type | Select-Object Lun,Type,Wwn
+                        # Add sanHash to Level2 array variable
+                        $LevelData.Level2 += $VnicData
+                    }
+                    # Add current boot entry data to boot hash
+                    $BootPolicyData.Entries += $LevelData
+                }
+
+                # Matches ISCSI boot types
+                'iscsi' {
+                    # Get Level 1 data from current boot item and Level 2 from child
+                    $LevelData = @{}
+                    $LevelData.Level1 = $BootItem | Select-Object Type,Order
+                    $LevelData.Level2 = @()
+                    $LevelData.Level2 += $BootItem | Get-UcsChild | Sort-Object Type | Select-Object ISCSIVnicName,Type
+                    $BootPolicyData.Entries += $LevelData
+                }
+            }
+        }
+        # Sort all boot entries by Level1 Order
+        $BootPolicyData.Entries = $BootPolicyData.Entries | Sort-Object {$_.Level1.Order}
+        # Store boot entries to configured boot order array
+        # $Data.Configured_Boot_Order += $BootPolicyData
+        $Data += $BootPolicyData
+    }
+    return $Data
+}
+
 function Get-InventoryServerData {
     <#
     .DESCRIPTION
         Extract inventory data for blades or rackmount servers
     .PARAMETER $handle
         Handle (object reference) to target UCS domain
-    .PARAMETER $paths
+    .PARAMETER $AllFabricEp
         Object reference to results of Get-UcsFabricPathEp
     .PARAMETER $memoryArray
         Object reference to results of Get-UcsMemoryUnit
@@ -552,363 +673,302 @@ function Get-InventoryServerData {
 
     param (
         [Parameter(Mandatory)]$handle,
-        [Parameter(Mandatory)]$paths,
+        [Parameter(Mandatory)]$AllFabricEp,
         [Parameter(Mandatory)]$memoryArray,
         [Parameter(Mandatory)]$equip_localdsk_def,
         [Parameter(Mandatory)]$equip_manufact_def,
         [Parameter(Mandatory)]$equip_physical_def,
         [Switch]$IsBlade
     )
+    $AllRunningFirmware = Get-UcsFirmwareRunning
+    $AllVirtualCircuits = Get-UcsDcxVc
 
-    $inventory_data = @()
+    $Data = @()
 
     if ($IsBlade) {$servers = Get-UcsBlade -Ucs $handle} else {$servers = Get-UcsRackUnit -Ucs $handle}
 
     # Iterate through each server and grab relevant data
     foreach ($server in $servers) {
-    # Get-UcsBlade -Ucs $handle | ForEach-Object {
-        # Store current pipe variable to local variable
-        # $server = $_
         # Hash variable for storing current server data
-        $srv_data = @{}
+        $ServerData = @{}
 
-        $srv_data.Dn = $server.Dn
-        $srv_data.Status = $server.OperState
+        $ServerData.Dn = $Server.Dn
+        $ServerData.Status = $Server.OperState
         if ($IsBlade) {
-            $srv_data.Chassis = $server.ChassisId
-            $srv_data.Slot = $server.SlotId
+            $ServerData.Chassis = $Server.ChassisId
+            $ServerData.Slot = $Server.SlotId
         } else {
-            $srv_data.Rack_Id = $rack.Id
+            $ServerData.Rack_Id = $rack.Id
         }
         # Get Model and Description common names and format the text
-        ($srv_data.Model,$srv_data.Model_Description) = $equip_manufact_def | Where-Object {$_.Sku -ieq $($server.Model)} | Select-Object Name,Description | ForEach-Object {($_.Name -replace "Cisco UCS ", ""),$_.Description}
-        $srv_data.Serial = $server.Serial
-        $srv_data.Uuid = $server.Uuid
-        $srv_data.UsrLbl = $server.UsrLbl
-        $srv_data.Name = $server.Name
-        $srv_data.Service_Profile = $server.AssignedToDn
+        $ServerData.Model = (($equip_manufact_def.Where({$_.Sku -ieq $($Server.Model)})).Name).Replace("Cisco UCS ", "")
+        $ServerData.Description = ($equip_manufact_def.Where({$_.Sku -ieq $($Server.Model)})).Description
+        $ServerData.Serial = $Server.Serial
+        $ServerData.Uuid = $Server.Uuid
+        $ServerData.UsrLbl = $Server.UsrLbl
+        $ServerData.Name = $Server.Name
+        $ServerData.Service_Profile = $Server.AssignedToDn
 
         # If server doesn't have a service profile set profile name to Unassociated
-        if(!($srv_data.Service_Profile)) {
-            $srv_data.Service_Profile = "Unassociated"
+        if(!($ServerData.Service_Profile)) {
+            $ServerData.Service_Profile = "Unassociated"
         }
         # Get server child object for future iteration
-        $childTargets = $server | Get-UcsChild | Where-Object {$_.Rn -ieq "bios" -or $_.Rn -ieq "mgmt" -or $_.Rn -ieq "board"} | get-ucschild
+        $childTargets = $Server | Get-UcsChild | Where-Object {$_.Rn -match "^bios|^mgmt|^board$"} | get-ucschild
 
         # Get server CPU data
-        $cpu = ($childTargets | Where-Object {$_.Rn -match "cpu" -and $_.Model -ne ""} | Select-Object -first 1).Model
+        $cpu = ($childTargets | Where-Object {$_.Rn -ieq "cpu-1"}).Model
         # Get CPU common name and format text
-        $srv_data.CPU_Model = '(' + $server.NumOfCpus + ') ' + (($cpu).Replace("Intel(R) Xeon(R) ","")).Replace("CPU ","")
-        $srv_data.CPU_Cores = $server.NumOfCores
-        $srv_data.CPU_Threads = $server.NumOfThreads
+        $ServerData.CPU_Model = "($($Server.NumOfCpus)) $($cpu -replace ('(Intel\(R\) Xeon\(R\)|CPU) ',''))"
+        $ServerData.CPU_Cores = $Server.NumOfCores
+        $ServerData.CPU_Threads = $Server.NumOfThreads
         # Format available memory in GB
-        $srv_data.Memory = $server.AvailableMemory/1024
-        $srv_data.Memory_Speed = $server.MemorySpeed
-        $srv_data.BIOS = (($childTargets | Where-Object {$_.Type -eq "blade-bios"}).Version -replace ('(?!(.*[.]){2}).*',"")).TrimEnd('.')
-        $srv_data.CIMC = ($childTargets | Where-Object {$_.Type -eq "blade-controller" -and $_.Deployment -ieq "system"}).Version
+        $ServerData.Memory = $Server.AvailableMemory/1024
+        $ServerData.Memory_Speed = $Server.MemorySpeed
+        # Get BIOS version. Strip uninteresting text string from right side.
+        $ServerData.BIOS = ($childTargets.Where({$_.Type -eq "blade-bios"})).Version
+        $ServerData.BIOS = ($ServerData.BIOS -replace ('(?!(.*\.){2}).*','')).TrimEnd('.')
+        # $ServerData.BIOS = (($childTargets | Where-Object {$_.Type -eq "blade-bios"}).Version -replace ('(?!(.*\.){2}).*','')).TrimEnd('.')
+        $ServerData.CIMC = ($childTargets | Where-Object {$_.Rn -ieq "fw-system"}).Version
 
+        # =====
         # Array variable for storing server adapter data
-        $srv_data.Adapters = @()
+        $ServerData.Adapters = @()
 
         # Iterate through each server adapter and grab detailed information
-        $server | Get-UcsAdaptorUnit | ForEach-Object {
+        $Adapters = $Server | Get-UcsAdaptorUnit
+        foreach ($Adapter in $Adapters) {
             # Hash variable for storing current adapter data
-            $adapterHash = @{}
-            $adapter = $_
-            # Get common name of adapter and format string
-            $adapterHash.Model = ($equip_manufact_def | Where-Object {$_.Sku -ieq $($adapter.Model)}).Name -replace "Cisco UCS ", ""
-            if ($IsBlade) {
-                $adapterHash.Name = "Adaptor-$($adapter.Id)"
-            } else {
-                $adapterHash.Name = "Adaptor-$($adapter.PciSlot)"
-            }
-            $adapterHash.Slot = $_.Id
-            $adapterHash.Fw = ($_ | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
-            $adapterHash.Serial = $_.Serial
-            # Add current adapter hash to server adapter array
-            $srv_data.Adapters += $adapterHash
-        }
+            $AdapterData = @{}
 
+            # Get common name of adapter and format string
+            $AdapterData.Model = ($equip_manufact_def | Where-Object {$_.Sku -ieq $($adapter.Model)}).Name
+            $AdapterData.Model = $AdapterData.Model -replace "Cisco UCS ", ""
+            # Report adapter name field based on server type.
+            if ($IsBlade) {
+                $AdapterData.Name = "Adaptor-$($adapter.Id)"
+            } else {
+                $AdapterData.Name = "Adaptor-$($adapter.PciSlot)"
+            }
+            $AdapterData.Slot = $Adapter.Id
+            $AdapterData.Fw = ($Adapter | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
+            $AdapterData.Serial = $Adapter.Serial
+            # Add current adapter hash to server adapter array
+            $ServerData.Adapters += $AdapterData
+        }
+        # Declutter debug
+        if ($Adapter) {Remove-Variable Adapter}
+        if ($Adapters) {Remove-Variable Adapters}
+        if ($AdapterData) {Remove-Variable AdapterData}
+
+        # =====
         # Array variable for storing server memory data
-        $srv_data.Memory_Array = @()
+        $ServerData.Memory_Array = @()
+
         # Iterage through all memory tied to current server and grab relevant data
-        $memoryArray | Where-Object {$_.Dn -match $server.Dn} | Select-Object Id,Location,Capacity,Clock | Sort-Object {($_.Id) -as [int]} | ForEach-Object {
+        $Modules = $memoryArray.Where({$_.Dn -match $Server.Dn}) | Sort-Object {$_.Id -as [int]}
+        foreach ($Module in $Modules) {
             # Hash variable for storing current memory data
-            $memHash = @{}
-            $memHash.Name = "Memory " + $_.Id
-            $memHash.Location = $_.Location
-            if ($_.Capacity -like "unspecified") {
-                $memHash.Capacity = "empty"
-                $memHash.Clock = "empty"
+            $ModuleData = @{}
+
+            $ModuleData.Name = "Slot $($Module.Id)"
+            $ModuleData.Location = $Module.Location
+            if ($Module.Capacity -like "unspecified") {
+                $ModuleData.Capacity = "empty"
+                $ModuleData.Clock = "empty"
             } else {
                 # Format DIMM capacity in GB
-                $memHash.Capacity = ($_.Capacity)/1024
-                $memHash.Clock = $_.Clock
+                $ModuleData.Capacity = ($Module.Capacity)/1024
+                $ModuleData.Clock = $Module.Clock
             }
-            $srv_data.Memory_Array += $memHash
+            $ServerData.Memory_Array += $ModuleData
         }
+        # Declutter debug
+        if ($Module) {Remove-Variable Module}
+        if ($Modules) {Remove-Variable Modules}
+        if ($ModuleData) {Remove-Variable ModuleData}
+
+        # =====
         # Array variable for storing local storage configuration data
-        $srv_data.Storage = @()
+        $ServerData.Storage = @()
 
         # Iterate through each server storage controller and grab relevant data
-        $server | Get-UcsComputeBoard | Get-UcsStorageController | ForEach-Object {
-            # Store current pipe variable to local variable
-            $controller = $_
+        $Controllers = $Server | Get-UcsComputeBoard | Get-UcsStorageController
+        foreach ($Controller in $Controllers) {
             # Hash variable for storing current storage controller data
-            $controllerHash = @{}
+            $ControllerData = @{}
 
             # Grab relevant controller data and store to respective controllerHash variable
-            $controllerHash.Id,$controllerHash.Vendor,$controllerHash.Revision,$controllerHash.RaidSupport,$controllerHash.PciAddr,$controllerHash.RebuildRate,$controllerHash.Model,$controllerHash.Serial,$controllerHash.ControllerStatus = $controller.Id,$controller.Vendor,$controller.HwRevision,$controller.RaidSupport,$controller.PciAddr,$controller.XtraProperty.RebuildRate,$controller.Model,$controller.Serial,$controller.XtraProperty.ControllerStatus
-            $controllerHash.Disk_Count = 0
+            $ControllerData.ControllerStatus = $Controller.XtraProperty.ControllerStatus
+            $ControllerData.Id = $Controller.Id
+            $ControllerData.Model = $Controller.Model
+            $ControllerData.PciAddr = $Controller.PciAddr
+            $ControllerData.RaidSupport = $Controller.RaidSupport
+            $ControllerData.RebuildRate = $Controller.XtraProperty.RebuildRate
+            $ControllerData.Revision = $Controller.HwRevision
+            $ControllerData.Serial = $Controller.Serial
+            $ControllerData.Vendor = $Controller.Vendor
+
             # Array variable for storing controller disks
-            $controllerHash.Disks = @()
+            $ControllerData.Disks = @()
+            $ControllerData.Disk_Count = 0
             # Iterate through each local disk and grab relevant data
-            $controller | Get-UcsStorageLocalDisk -Presence "equipped" | ForEach-Object {
-                # Store current pipe variable to local variable
-                $disk = $_
+            $Disks = $Controller | Get-UcsStorageLocalDisk -Presence "equipped"
+            foreach ($Disk in $Disks) {
                 # Hash variable for storing current disk data
-                $diskHash = @{}
-                # Get common name of disk model and format text
-                $equipmentDef = $equip_manufact_def | Where-Object {$_.OemPartNumber -ieq $($disk.Model)}
-                # Get detailed disk capability data
-                $capabilities = $equip_localdsk_def.Where({$_.Dn -match $disk.Model})
-                $diskHash.Id = $disk.Id
-                $diskHash.Pid = $equipmentDef.Pid
-                $diskHash.Vendor = $disk.Vendor
-                $diskHash.Vid = $equipmentDef.Vid
-                $diskHash.Serial = $disk.Serial
-                $diskHash.Product_Name = $equipmentDef.Name
-                $diskHash.Drive_State = $disk.XtraProperty.DiskState
-                $diskHash.Power_State = $disk.XtraProperty.PowerState
+                $DiskData = @{}
+
+                $DiskData.Blocks = $Disk.NumberOfBlocks
+                $DiskData.Block_Size = $Disk.BlockSize
+                $DiskData.Id = $Disk.Id
+                $DiskData.Operability = $Disk.Operability
+                $DiskData.Presence = $Disk.Presence
+                $DiskData.Running_Version = ($AllRunningFirmware.Where({$_.Dn -match $Disk.Dn})).Version
+                $DiskData.Serial = $Disk.Serial
                 # Format disk size to whole GB value
-                $diskHash.Size = "{0:N2}" -f ($disk.Size/1024)
-                $diskHash.Link_Speed = $disk.XtraProperty.LinkSpeed
-                $diskHash.Blocks = $disk.NumberOfBlocks
-                $diskHash.Block_Size = $disk.BlockSize
-                $diskHash.Technology = $capabilities.Technology
-                $diskHash.Avg_Seek_Time = $capabilities.SeekAverageReadWrite
-                $diskHash.Track_To_Seek = $capabilities.SeekTrackToTrackReadWrite
-                $diskHash.Operability = $disk.Operability
-                $diskHash.Presence = $disk.Presence
-                $diskHash.Running_Version = ($disk | Get-UcsFirmwareRunning).Version
-                $controllerHash.Disk_Count += 1
+                $DiskData.Size = "{0:N2}" -f ($Disk.Size/1024)
+                $DiskData.Vendor = $Disk.Vendor
+                $DiskData.Vid = $equipmentDef.Vid
+
+                $DiskData.Drive_State = $Disk.XtraProperty.DiskState
+                $DiskData.Link_Speed = $Disk.XtraProperty.LinkSpeed
+                $DiskData.Power_State = $Disk.XtraProperty.PowerState
+
+                # Get common name of disk model and format text
+                $equipmentDef = $equip_manufact_def | Where-Object {$_.OemPartNumber -ieq $($Disk.Model)}
+                $DiskData.Pid = $equipmentDef.Pid
+                $DiskData.Product_Name = $equipmentDef.Name
+
+                # Get detailed disk capability data
+                $capabilities = $equip_localdsk_def.Where({$_.Dn -match $Disk.Model})
+                $DiskData.Technology = $capabilities.Technology
+                $DiskData.Avg_Seek_Time = $capabilities.SeekAverageReadWrite
+                $DiskData.Track_To_Seek = $capabilities.SeekTrackToTrackReadWrite
+
+                $ControllerData.Disk_Count += 1
                 # Add current disk hash to controller hash disk array
-                $controllerHash.Disks += $diskHash
+                $ControllerData.Disks += $DiskData
             }
             # Add controller hash variable to current server hash storage array
-            $srv_data.Storage += $controllerHash
+            $ServerData.Storage += $ControllerData
         }
+        # Declutter debug
+        if ($Controller) {Remove-Variable Controller}
+        if ($Controllers) {Remove-Variable Controllers}
+        if ($ControllerData) {Remove-Variable ControllerData}
+        if ($Disk) {Remove-Variable Disk}
+        if ($Disks) {Remove-Variable Disks}
+        if ($DiskData) {Remove-Variable DiskData}
 
+        # =====
         # Array variable for storing VIF information for current server
-        $srv_data.VIFs = @()
-        # Grab all circuits that match the current server DN and are active or link-down
-        $circuits = Get-UcsDcxVc -Ucs $handle -Filter "Dn -cmatch $($server.Dn) -and (OperState -cmatch active -or OperState -cmatch link-down)" | Select-Object Dn,Id,OperBorderPortId,OperBorderSlotId,SwitchId,Vnic,LinkState
+        $ServerData.VIFs = @()
+
+        # Search script blocks. $_ resolved where executed
+        $Search1 = {$_.Dn -Match $Server.Dn}
+        $Search2 = {$_.CType -match "mux-fabric|switch-to-host"}
+        $Search3 = {$_.CType -notmatch "mux-fabric(.*)?[-]"}
+
         # Iterate through all paths of type "mux-fabric" for the current server
-        $paths | Where-Object {$_.Dn -Match $server.Dn -and $_.CType -match "mux-fabric|switch-to-host" -and $_.CType -notmatch "mux-fabric(.*)?[-]"} | ForEach-Object {
-            # Store current pipe variable to local variable
-            $vif = $_
+        $FabricEps = $AllFabricEp | Where-Object {(& $Search1) -and (& $Search2) -and (& $Search3)}
+        foreach ($FabricEp in $FabricEps) {
             # Hash variable for storing current VIF data
-            $vifHash = @{}
+            $FabricEpData = @{}
 
             # The name of the current Path formatted to match the presentation in UCSM
-            $vifHash.Name = "Path " + $_.SwitchId + '/' + ($_.Dn | Select-String -pattern "(?<=path[-]).*(?=[/])")[0].Matches.Value
+            $FabricEpData.Name = "Path " + $FabricEp.SwitchId + '/' + ($FabricEp.Dn | Select-String -pattern "(?<=path[-]).*(?=[/])")[0].Matches.Value
 
             # Gets peer port information filtered to the current path for adapter and fex host port
-            $peer_epdn_prefix = ($vif.EpDn | Select-String -pattern ".*(?=(.*[/]){2})").Matches.Value
-            $vifPeers = $paths | Where-Object {$_.Dn -Match $server.Dn -and $_.EpDn -match $peer_epdn_prefix -and $_.Dn -ne $vif.Dn}
+            $Search2 = {$_.EpDn -match $FabricEpPeersEpDn}
+            $Search3 = {$_.Dn -ne $FabricEp.Dn}
+            $FabricEpPeersEpDn = ($FabricEp.EpDn | Select-String -pattern ".*(?=(.*[/]){2})").Matches.Value
+            $FabricEpPeers = $AllFabricEp | Where-Object {(& $Search1) -and (& $Search2) -and (& $Search3)}
 
-            if ($vifPeers) {
-                $fabric_host = $vifPeers | Where-Object {$_.Rn -match "fabric.*-to-hostpc"}
-                $host_adapter = $vifPeers | Where-Object {$_.Rn -match "hostpc-to-adaptorpc"}
+            if ($FabricEpPeers) {
+                $fabric_host = $FabricEpPeers | Where-Object {$_.Rn -match "fabric.*-to-hostpc"}
+                $host_adapter = $FabricEpPeers | Where-Object {$_.Rn -match "hostpc-to-adaptorpc"}
 
                 # If Adapter PortId is greater than 1000 then format string as a port channel
                 if ($host_adapter.PeerPortId -gt 1000) {
-                    $vifHash.Adapter_Port = 'PC-' + $host_adapter.PeerPortId
+                    $FabricEpData.Adapter_Port = 'PC-' + $host_adapter.PeerPortId
                 } else {
                 # Else format in slot/port notation
-                    $vifHash.Adapter_Port = "$($host_adapter.PeerSlotId)/$($host_adapter.PeerPortId)"
+                    $FabricEpData.Adapter_Port = "$($host_adapter.PeerSlotId)/$($host_adapter.PeerPortId)"
                 }
 
                 # If FEX PortId is greater than 1000 then format string as a port channel
                 if($fabric_host.PortId -gt 1000) {
-                    $vifHash.Fex_Host_Port = 'PC-' + $fabric_host.PortId
+                    $FabricEpData.Fex_Host_Port = 'PC-' + $fabric_host.PortId
                 } else {
                 # Else format in chassis/slot/port notation
-                    $vifHash.Fex_Host_Port = "$($fabric_host.ChassisId)/$($fabric_host.SlotId)/$($fabric_host.PortId)"
+                    $FabricEpData.Fex_Host_Port = "$($fabric_host.ChassisId)/$($fabric_host.SlotId)/$($fabric_host.PortId)"
                 }
 
                 # If Network PortId is greater than 1000 then format string as a port channel
-                if($vif.PortId -gt 1000) {
-                    $vifHash.Fex_Network_Port = 'PC-' + $vif.PortId
+                if($FabricEp.PortId -gt 1000) {
+                    $FabricEpData.Fex_Network_Port = 'PC-' + $FabricEp.PortId
                 } else {
                 # Else format in fabricId/slot/port notation
-                    $vifHash.Fex_Network_Port = $vif.PortId
+                    $FabricEpData.Fex_Network_Port = $FabricEp.PortId
                 }
 
                 # Server Port for current path as formatted in UCSM
-                $vifHash.FI_Server_Port = "$($vif.SwitchId)/$($vif.PeerSlotId)/$($vif.PeerPortId)"
+                $FabricEpData.FI_Server_Port = "$($FabricEp.SwitchId)/$($FabricEp.PeerSlotId)/$($FabricEp.PeerPortId)"
             } else {
-                $vifHash.Adapter_Port = "$($vif.PeerSlotId)/$($vif.PeerPortId)"
-                $vifHash.Fex_Host_Port = "N/A"
-                $vifHash.Fex_Network_Port = "N/A"
-                $vifHash.FI_Server_Port = "$($vif.SwitchId)/$($vif.SlotId)/$($vif.PortId)"
+                $FabricEpData.Adapter_Port = "$($FabricEp.PeerSlotId)/$($FabricEp.PeerPortId)"
+                $FabricEpData.Fex_Host_Port = "N/A"
+                $FabricEpData.Fex_Network_Port = "N/A"
+                $FabricEpData.FI_Server_Port = "$($FabricEp.SwitchId)/$($FabricEp.SlotId)/$($FabricEp.PortId)"
             }
 
             # Array variable for storing virtual circuit data
-            $vifHash.Circuits = @()
+            $FabricEpData.Circuits = @()
+
             # Iterate through all circuits for the current vif
-            $circuits | Where-Object {$_.Dn -cmatch ($vif.Dn | Select-String -pattern ".*(?<=[/])")[0].Matches.Value} | Select-Object Id,vNic,OperBorderPortId,OperBorderSlotId,LinkState,SwitchId | ForEach-Object {
+            $Circuits = $AllVirtualCircuits | Where-Object {$_.Dn -cmatch ($FabricEp.Dn | Select-String -pattern ".*(?<=[/])")[0].Matches.Value}
+            foreach ($Circuit in $Circuits) {
                 # Hash variable for storing current circuit data
-                $vcHash = @{}
-                $vcHash.Name = 'Virtual Circuit ' + $_.Id
-                $vcHash.vNic = $_.vNic
-                $vcHash.Link_State = $_.LinkState
+                $CircuitData = @{}
+
+                $CircuitData.Name = "Virtual Circuit $($Circuit.Id)"
+                $CircuitData.vNic = $Circuit.vNic
+                $CircuitData.Link_State = $Circuit.LinkState
+
                 # Check if the current circuit is pinned to a PC uplink
-                if($_.OperBorderPortId -gt 0 -and $_.OperBorderSlotId -eq 0) {
-                    $vcHash.FI_Uplink = "$($_.SwitchId)/PC - $($_.OperBorderPortId)"
-                } elseif($_.OperBorderPortId -eq 0 -and $_.OperBorderSlotId -eq 0) {
+                if($Circuit.OperBorderPortId -gt 0 -and $Circuit.OperBorderSlotId -eq 0) {
+                    $CircuitData.FI_Uplink = "$($Circuit.SwitchId)/PC - $($Circuit.OperBorderPortId)"
                 # Check if the current circuit is unpinned
-                $vcHash.FI_Uplink = "unpinned"
-                } else {
+                } elseif($Circuit.OperBorderPortId -eq 0 -and $Circuit.OperBorderSlotId -eq 0) {
+                    $CircuitData.FI_Uplink = "unpinned"
                 # Assume that the circuit is pinned to a single uplink port
-                    $vcHash.FI_Uplink = "$($_.SwitchId)/$($_.OperBorderSlotId)/$($_.OperBorderPortId)"
+                } else {
+                    $CircuitData.FI_Uplink = "$($Circuit.SwitchId)/$($Circuit.OperBorderSlotId)/$($Circuit.OperBorderPortId)"
                 }
                 # Add current circuit data to loop array variable
-                $vifHash.Circuits += $vcHash
+                $FabricEpData.Circuits += $CircuitData
             }
             # Add vif data to server hash
-            $srv_data.VIFs += $vifHash
+            $ServerData.VIFs += $FabricEpData
         }
+        # Declutter debug
+        if ($FabricEp) {Remove-Variable FabricEp}
+        if ($FabricEps) {Remove-Variable FabricEps}
+        if ($FabricEpData) {Remove-Variable FabricEpData}
+        if ($Circuit) {Remove-Variable Circuit}
+        if ($Circuits) {Remove-Variable Circuits}
+        if ($CircuitData) {Remove-Variable CircuitData}
 
+        # =====
         # Get the configured boot definition of the current server
-
         # Array variable for storing boot order data
-        $srv_data.Configured_Boot_Order = @()
-        # Iterate through all boot parameters for current server
-        $server | Get-UcsBootDefinition | ForEach-Object {
-            # Store current pipe variable to local variable
-            $policy = $_
-            # Hash variable for storing current boot data
-            $bootHash = @{}
-            # Grab multiple boot policy data points from current policy
-            ($bootHash.Dn,$bootHash.BootMode,$bootHash.EnforceVnicName,$bootHash.Name,$bootHash.RebootOnUpdate,$bootHash.Owner) = $policy.Dn,$policy.BootMode,$policy.EnforceVnicName,$policy.Name,$policy.RebootOnUpdate,$policy.Owner
-
-            # Array variable for string boot policy entries
-            $bootHash.Entries = @()
-            # Get all child objects of the current policy and sort by boot order
-            $policy | Get-UcsChild | Sort-Object Order | ForEach-Object {
-                # Store current pipe variable to local variable
-                $entry = $_
-                #===========================================================#
-                #    Switch statement using the device type as the target   #
-                #                                                           #
-                #    Variable Definitions:                                  #
-                #        Level1 - VNIC, Order                               #
-                #        Level2 - Type, VNIC Name                           #
-                #        Level3 - Lun, Type, WWN                            #
-                #===========================================================#
-                Switch ($entry.Type) {
-                    # Matches either local media or SAN storage
-                    'storage' {
-                        # Get child data of boot entry for more detailed information
-                        $entry | Get-UcsChild | Sort-Object Type | ForEach-Object {
-                            # Hash variable for storing current boot entry data
-                            $entryHash = @{}
-                            # Checks if current entry is a SAN target
-                            if($_.Rn -match "san") {
-                                # Grab Level1 data
-                                $entryHash.Level1 = $entry | Select-Object Type,Order
-                                # Array for storing Level2 data
-                                $entryHash.Level2 = @()
-                                # Hash variable for storing current san entry data
-                                $sanHash = @{}
-                                $sanHash.Type = $_.Type
-                                $sanHash.VnicName = $_.VnicName
-                                # Array variable for storing Level3 data
-                                $sanHash.Level3 = @()
-                                # Get Level3 data from child object
-                                $sanHash.Level3 += $_ | Get-UcsChild | Sort-Object Type | Select-Object Lun,Type,Wwn
-                                # Add sanHash to Level2 array variable
-                                $entryHash.Level2 += $sanHash
-                                # Add current boot entry data to boot hash
-                                $bootHash.Entries += $entryHash
-                            } elseif($_.Rn -match "local-storage") {
-                            # Checks if current entry is a local storage target
-                                # Selects Level1 data
-                                $_ | Get-UcsChild | Sort-Object Order | ForEach-Object {
-                                    $entryHash = @{}
-                                    $entryHash.Level1 = $_ | Select-Object Type,Order
-                                    $bootHash.Entries += $entryHash
-                                }
-                            }
-                        }
-                    }
-                    # Matches virtual media types
-                    'virtual-media' {
-                        $entryHash = @{}
-                        # Get Level1 data plus Access type to determine device type
-                        $entryHash.Level1 = $entry | Select-Object Type,Order,Access
-                        if ($entryHash.Level1.Access -match 'read-only') {
-                            $entryHash.Level1.Type = 'CD/DVD'
-                        } else {
-                            $entryHash.Level1.Type = 'Floppy'
-                        }
-                        $bootHash.Entries += $entryHash
-                    }
-                    # Matches lan boot types
-                    'lan' {
-                        $entryHash = @{}
-                        $entryHash.Level1 = $entry | Select-Object Type,Order
-                        $entryHash.Level2 = @()
-                        $entryHash.Level2 += $entry | Get-UcsChild | Select-Object VnicName,Type
-                        $bootHash.Entries += $entryHash
-                    }
-                    # Matches SAN and iSCSI boot types
-                    'san' {
-                        $entryHash = @{}
-                        # Grab Level1 data
-                        $entryHash.Level1 = $entry | Select-Object Type,Order
-                        $entryHash.Level2 = @()
-                        $entry | Get-UcsChild | Sort-Object Type | ForEach-Object {
-                            # Hash variable for storing current san entry data
-                            $sanHash = @{}
-                            # Grab Level2 Data
-                            $sanHash.Type = $_.Type
-                            $sanHash.VnicName = $_.VnicName
-                            # Array variable for storing Level3 data
-                            $sanHash.Level3 = @()
-                            # Get Level3 data from child object
-                            $sanHash.Level3 += $_ | Get-UcsChild | Sort-Object Type | Select-Object Lun,Type,Wwn
-                            # Add sanHash to Level2 array variable
-                            $entryHash.Level2 += $sanHash
-                        }
-                        # Add current boot entry data to boot hash
-                        $bootHash.Entries += $entryHash
-                    }
-                    'iscsi' {
-                        # Hash variable for storing iscsi boot entry data
-                        $entryHash = @{}
-                        # Grab Level1 boot data
-                        $entryHash.Level1 = $entry | Select-Object Type,Order
-                        # Array variable for storing Level2 boot data
-                        $entryHash.Level2 = @()
-                        # Get all iSCSI Level2 data from child objects
-                        $entryHash.Level2 += $entry | Get-UcsChild | Sort-Object Type | Select-Object ISCSIVnicName,Type
-                        # Add current boot entry data to boot hash
-                        $bootHash.Entries += $entryHash
-                    }
-                }
-            }
-            # Sort all boot entries by Level1 Order
-            $bootHash.Entries = $bootHash.Entries | Sort-Object {$_.Level1.Order}
-            # Store boot entries to configured boot order array
-            $srv_data.Configured_Boot_Order += $bootHash
-        }
+        $ServerData.Configured_Boot_Order = @()
+        $ServerBootPolicies = $Server | Get-UcsBootDefinition
+        $ServerData.Configured_Boot_Order += Get-ConfiguredBootOrder -BootPolicies $ServerBootPolicies
 
         # Grab actual boot order data from BIOS boot order table for current server
 
         # Array variable for storing boot entries
-        $srv_data.Actual_Boot_Order = @()
+        $ServerData.Actual_Boot_Order = @()
         # Iterate through all boot entries
         $server | Get-UcsBiosUnit | Get-UcsBiosBOT | Get-UcsBiosBootDevGrp | Sort-Object Order | ForEach-Object {
             # Store current pipe variable to local variable
@@ -924,13 +984,13 @@ function Get-InventoryServerData {
                 $bootHash.Entries += "($($_.Order)) $($_.Descr)"
             }
             # Add boot entry data to actual boot order array
-            $srv_data.Actual_Boot_Order += $bootHash
+            $ServerData.Actual_Boot_Order += $bootHash
         }
         # Add server hash data to DomainHash variable
-        $inventory_data += $srv_data
+        $Data += $ServerData
     }
     # End server Inventory Collection
-    return $inventory_data
+    return $Data
 }
 
 function Get-SystemData {
@@ -969,7 +1029,8 @@ function Get-SystemData {
         UcsStats = $statistics
         DnFilter = "sys/chassis-[0-9]+/stats"
         RnFilter = "stats"
-        StatList = @("Dn","InputPower","InputPowerAvg","InputPowerMax","OutputPower","OutputPowerAvg","OutputPowerMax","Suspect")
+        StatList = @("Dn","InputPower","InputPowerAvg","InputPowerMax","OutputPower","OutputPowerAvg",
+                     "OutputPowerMax","Suspect")
     }
     $Data.Chassis_Power += Get-DeviceStats @cmd_args -IsChassis
     $Data.Chassis_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]stats)',"")}
@@ -979,7 +1040,8 @@ function Get-SystemData {
         UcsStats = $statistics
         DnFilter = "sys/.*/board/power-stats"
         RnFilter = "power-stats"
-        StatList = @("Dn","ConsumedPower","ConsumedPowerAvg","ConsumedPowerMax","InputCurrent","InputCurrentAvg","InputVoltage","InputVoltageAvg","Suspect")
+        StatList = @("Dn","ConsumedPower","ConsumedPowerAvg","ConsumedPowerMax","InputCurrent","InputCurrentAvg",
+                     "InputVoltage","InputVoltageAvg","Suspect")
     }
     $Data.Server_Power += Get-DeviceStats @cmd_args -IsServer
     $Data.Server_Power | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]board.*)',"")}
@@ -989,7 +1051,9 @@ function Get-SystemData {
         UcsStats = $statistics
         DnFilter = "sys/.*/board/temp-stats"
         RnFilter = "temp-stats"
-        StatList = @("Dn","FmTempSenIo","FmTempSenIoAvg","FmTempSenIoMax","FmTempSenRear","FmTempSenRearAvg","FmTempSenRearMax","FrontTemp","FrontTempAvg","FrontTempMax","Ioh1Temp","Ioh1TempAvg","Ioh1TempMax","Suspect")
+        StatList = @("Dn","FmTempSenIo","FmTempSenIoAvg","FmTempSenIoMax","FmTempSenRear","FmTempSenRearAvg",
+                     "FmTempSenRearMax","FrontTemp","FrontTempAvg","FrontTempMax","Ioh1Temp","Ioh1TempAvg",
+                     "Ioh1TempMax","Suspect")
     }
     $Data.Server_Temp += Get-DeviceStats @cmd_args -IsServer
     $Data.Server_Temp | ForEach-Object {$_.Dn = $_.Dn -replace ('(sys[/])|([/]board.*)',"")}
@@ -1265,11 +1329,11 @@ function Invoke-UcsDataGather {
 
     # Get all memory and vif data for future iteration
     $memoryArray = Get-UcsMemoryUnit -Ucs $handle
-    $paths = Get-UcsFabricPathEp -Ucs $handle
+    $AllFabricEp = Get-UcsFabricPathEp -Ucs $handle
 
     $cmd_args = @{
         handle = $handle
-        paths = $paths
+        AllFabricEp = $AllFabricEp
         memoryArray = $memoryArray
         equip_localdsk_def = $equip_localdsk_def
         equip_manufact_def = $equip_manufact_def
@@ -1333,123 +1397,8 @@ function Invoke-UcsDataGather {
 
     # Boot Order Policies
     $DomainHash.Policies.Boot_Policies = @()
-    Get-UcsBootPolicy | ForEach-Object {
-        # Store current pipe variable to local variable
-        $policy = $_
-        # Hash variable for storing current boot data
-        $bootHash = @{}
-        # Grab multiple boot policy data points from current policy
-        ($bootHash.Dn,$bootHash.Description,$bootHash.BootMode,$bootHash.EnforceVnicName,$bootHash.Name,$bootHash.RebootOnUpdate,$bootHash.Owner) = $policy.Dn,$policy.Descr,$policy.BootMode,$policy.EnforceVnicName,$policy.Name,$policy.RebootOnUpdate,$policy.Owner
-        # Array variable for string boot policy entries
-        $bootHash.Entries = @()
-        # Get all child objects of the current policy and sort by boot order
-        $policy | Get-UcsChild | Sort-Object Order | ForEach-Object {
-            # Store current pipe variable to local variable
-            $entry = $_
-            #===========================================================#
-            #    Switch statement using the device type as the target   #
-            #                                                           #
-            #    Variable Definitions:                                  #
-            #        Level1 - VNIC, Order                               #
-            #        Level2 - Type, VNIC Name                           #
-            #        Level3 - Lun, Type, WWN                            #
-            #===========================================================#
-            Switch ($entry.Type) {
-                # Matches either local media or SAN storage
-                'storage' {
-                    # Get child data of boot entry for more detailed information
-                    $entry | Get-UcsChild | Sort-Object Type | ForEach-Object {
-                        # Hash variable for storing current boot entry data
-                        $entryHash = @{}
-                        # Checks if current entry is a SAN target
-                        <#if($_.Rn -match "san") {
-                            # Grab Level1 data
-                            $entryHash.Level1 = $entry | Select-Object Type,Order
-                            # Array for storing Level2 data
-                            $entryHash.Level2 = @()
-                            # Hash variable for storing current san entry data
-                            $sanHash = @{}
-                            $sanHash.Type = $_.Type
-                            $sanHash.VnicName = $_.VnicName
-                            # Array variable for storing Level3 data
-                            $sanHash.Level3 = @()
-                            # Get Level3 data from child object
-                            $sanHash.Level3 += $_ | Get-UcsChild | Sort-Object Type | Select-Object Lun,Type,Wwn
-                            # Add sanHash to Level2 array variable
-                            $entryHash.Level2 += $sanHash
-                            # Add current boot entry data to boot hash
-                            $bootHash.Entries += $entryHash
-                        }
-                        #>
-                        # Checks if current entry is a local storage target
-                        if($_.Rn -match "local-storage") {
-                            # Selects Level1 data
-                            $_ | Get-UcsChild | Sort-Object Order | ForEach-Object {
-                                $entryHash = @{}
-                                $entryHash.Level1 = $_ | Select-Object Type,Order
-                                $bootHash.Entries += $entryHash
-                            }
-                        }
-                    }
-                }
-                # Matches virtual media types
-                'virtual-media' {
-                    $entryHash = @{}
-                    $entryHash.Level1 = $entry | Select-Object Type,Order,Access
-                    if ($entryHash.Level1.Access -match 'read-only') {
-                        $entryHash.Level1.Type = 'CD/DVD'
-                    } else {
-                        $entryHash.Level1.Type = 'floppy'
-                    }
-                    $bootHash.Entries += $entryHash
-                }
-                # Matches lan boot types
-                'lan' {
-                    $entryHash = @{}
-                    $entryHash.Level1 = $entry | Select-Object Type,Order
-                    $entryHash.Level2 = @()
-                    $entryHash.Level2 += $entry | Get-UcsChild | Select-Object VnicName,Type
-                    $bootHash.Entries += $entryHash
-                }
-                # Matches SAN boot types
-                'san' {
-                    $entryHash = @{}
-                    # Grab Level 1 Data
-                    $entryHash.Level1 = $entry | Select-Object Type,Order
-                    # Array variable for Level 2 data
-                    $entryHash.Level2 = @()
-                    # Iterate through each child object for Level 2 and 3 details
-                    $entry | Get-UcsChild | Sort-Object Type | ForEach-Object {
-                        $sanHash = @{}
-                        $sanHash.Type = $_.Type
-                        $sanHash.VnicName = $_.VnicName
-                        $sanHash.Level3 = @()
-                        $sanHash.Level3 += $_ | Get-UcsChild | Sort-Object Type | Select-Object Lun,Type,Wwn
-                        $entryHash.Level2 += $sanHash
-                    }
-                    # Add current boot entry data to boot hash
-                    $bootHash.Entries += $entryHash
-                }
-                # Matches ISCSI boot types
-                'iscsi' {
-                    # Hash variable for storing iscsi boot entry data
-                    $entryHash = @{}
-                    # Grab Level1 boot data
-                    $entryHash.Level1 = $entry | Select-Object Type,Order
-                    # Array variable for storing Level2 boot data
-                    $entryHash.Level2 = @()
-                    # Get all iSCSI Level2 data from child objects
-                    $entryHash.Level2 += $entry | Get-UcsChild | Sort-Object Type | Select-Object ISCSIVnicName,Type
-                    # Add current boot entry data to boot hash
-                    $bootHash.Entries += $entryHash
-                }
-            }
-        }
-        # Sort all boot entries by Level1 Order
-        $bootHash.Entries = $bootHash.Entries | Sort-Object {$_.Level1.Order}
-        # Store boot entries to system boot policies array
-        $DomainHash.Policies.Boot_Policies+= $bootHash
-    }
+    $AllBootPolicies = Get-UcsBootPolicy -Ucs $handle
+    $DomainHash.Policies.Boot_Policies += Get-ConfiguredBootOrder -BootPolicies $AllBootPolicies
 
     # End System Policies Collection
 
