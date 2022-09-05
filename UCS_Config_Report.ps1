@@ -495,45 +495,53 @@ function Get-DeviceStats {
     if ($NoStats) {
         if ($IsChassis) {
             # Get DNs for all chassis.
-            $dn_set = (Get-UcsChassis -Ucs $handle).Dn
+            $DeviceDNs = (Get-UcsChassis -Ucs $handle).Dn
         } elseif ($IsServer) {
             # Get DNs for all servers. Remove null values from resulting array, if present.
-            $dn_set = ((Get-UcsBlade).Dn + (Get-UcsRackUnit).Dn).Where({$null -ne $_})
+            $DeviceDNs = ((Get-UcsBlade).Dn + (Get-UcsRackUnit).Dn).Where({$null -ne $_})
         }
 
         # Initialize variable for set of stats
-        $stat_coll = @()
+        $Data = @()
 
-        if ($dn_set) {
+        if ($DeviceDNs) {
             # Loop through all DNs and set empty stats
-            foreach ($dn in $dn_set) {
-                $statHash = @{}
-                foreach ($stat in $StatList) {
-                    if ($stat -eq "Dn") {$statHash[$stat] = $dn} else {$statHash[$stat] = 0}
+            foreach ($DeviceDN in $DeviceDNs) {
+                $DeviceDnData = @{}
+                foreach ($Stat in $StatList) {
+                    if ($Stat -eq "Dn") {$DeviceDnData[$Stat] = $DeviceDN} else {$DeviceDnData[$Stat] = 0}
                 }
-                $stat_coll += $statHash
+                $Data += $DeviceDnData
             }
         } elseif (!$IsChassis -and !$IsServer) {
-            $statHash = @{}
-            foreach ($stat in $StatList) {
-                $statHash[$stat] = 0
+            $DeviceDnData = @{}
+            foreach ($Stat in $StatList) {
+                $DeviceDnData[$Stat] = 0
             }
-            $stat_coll += $statHash
+            $Data += $DeviceDnData
         }
     } else {
         # $start_time = Get-Date
-        $stat_coll = $UcsStats.Where({$_.Dn -cmatch $DnFilter -and $_.Rn -cmatch $RnFilter}) | Select-Object $StatList
+        $Data = $UcsStats.Where({$_.Dn -cmatch $DnFilter -and $_.Rn -cmatch $RnFilter}) | Select-Object $StatList
         # Write-Host "Stats Lookup Time: $(Get-ElapsedTime -FirstTimestamp $start_time)"
     }
 
-    return $stat_coll
+    return $Data
 }
 
 function Get-ConfiguredBootOrder {
+    <#
+    .DESCRIPTION
+        Gets all boot policies and boot order for supplied base policy set.
+    .PARAMETER $BootPolicies
+        Object reference to Get-UcsBootPolicy or Get-UcsBootDefinition
+    .OUTPUTS
+        One or more hashtables containing data
+    #>
     param (
         [Parameter(Mandatory)]$BootPolicies
     )
-    # Tier nested entries for display:
+    # Notes regarding object nesting and where information comes from:
     #   BootPolicies (collection)
     #       |---BootPolicy (obj) - High level descriptors
     #       |   |---BootItems (collection) (unordered - needs sort)
@@ -970,21 +978,14 @@ function Get-InventoryServerData {
         # Array variable for storing boot entries
         $ServerData.Actual_Boot_Order = @()
         # Iterate through all boot entries
-        $server | Get-UcsBiosUnit | Get-UcsBiosBOT | Get-UcsBiosBootDevGrp | Sort-Object Order | ForEach-Object {
-            # Store current pipe variable to local variable
-            $entry = $_
-            # Hash variable for storing current entry data
-            $bootHash = @{}
-            # Grab entry device type
-            $bootHash.Descr = $entry.Descr
-            # Grab detailed information about current boot entry
-            $bootHash.Entries = @()
-            $entry | Get-UcsBiosBootDev | ForEach-Object {
-                # Formats Entry string like UCSM presentation
-                $bootHash.Entries += "($($_.Order)) $($_.Descr)"
-            }
-            # Add boot entry data to actual boot order array
-            $ServerData.Actual_Boot_Order += $bootHash
+        $BootItems = $Server | Get-UcsBiosUnit | Get-UcsBiosBOT | Get-UcsBiosBootDevGrp | Sort-Object Order
+        foreach ($BootItem in $BootItems) {
+            $LevelData = @{}
+            $LevelData.Descr = $BootItem.Descr
+
+            $LevelData.Entries = @()
+            $BootItem | Get-UcsBiosBootDev | ForEach-Object {$LevelData.Entries += "($($_.Order)) $($_.Descr)"}
+            $ServerData.Actual_Boot_Order += $LevelData
         }
         # Add server hash data to DomainHash variable
         $Data += $ServerData
