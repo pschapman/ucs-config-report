@@ -667,11 +667,11 @@ function Get-InventoryServerData {
         Object reference to results of Get-UcsFabricPathEp
     .PARAMETER $memoryArray
         Object reference to results of Get-UcsMemoryUnit
-    .PARAMETER $equip_localdsk_def
+    .PARAMETER $EquipLocalDskDef
         Object reference to results of Get-UcsEquipmentLocalDiskDef
-    .PARAMETER $equip_manufact_def
+    .PARAMETER $EquipManufactDef
         Object reference to results of Get-UcsEquipmentManufacturingDef
-    .PARAMETER $equip_physical_def
+    .PARAMETER $EquipPhysicalDef
         Object reference to results of Get-UcsEquipmentPhysicalkDef
     .PARAMETER $IsBlade
         Indicates invocation is running unique commands for blade servers. Uses rackmount search if absent.
@@ -683,9 +683,9 @@ function Get-InventoryServerData {
         [Parameter(Mandatory)]$handle,
         [Parameter(Mandatory)]$AllFabricEp,
         [Parameter(Mandatory)]$memoryArray,
-        [Parameter(Mandatory)]$equip_localdsk_def,
-        [Parameter(Mandatory)]$equip_manufact_def,
-        [Parameter(Mandatory)]$equip_physical_def,
+        [Parameter(Mandatory)]$EquipLocalDskDef,
+        [Parameter(Mandatory)]$EquipManufactDef,
+        [Parameter(Mandatory)]$EquipPhysicalDef,
         [Switch]$IsBlade
     )
     $AllRunningFirmware = Get-UcsFirmwareRunning
@@ -709,8 +709,8 @@ function Get-InventoryServerData {
             $ServerData.Rack_Id = $rack.Id
         }
         # Get Model and Description common names and format the text
-        $ServerData.Model = (($equip_manufact_def.Where({$_.Sku -ieq $($Server.Model)})).Name).Replace("Cisco UCS ", "")
-        $ServerData.Description = ($equip_manufact_def.Where({$_.Sku -ieq $($Server.Model)})).Description
+        $ServerData.Model = (($EquipManufactDef.Where({$_.Sku -ieq $($Server.Model)})).Name).Replace("Cisco UCS ", "")
+        $ServerData.Description = ($EquipManufactDef.Where({$_.Sku -ieq $($Server.Model)})).Description
         $ServerData.Serial = $Server.Serial
         $ServerData.Uuid = $Server.Uuid
         $ServerData.UsrLbl = $Server.UsrLbl
@@ -750,7 +750,7 @@ function Get-InventoryServerData {
             $AdapterData = @{}
 
             # Get common name of adapter and format string
-            $AdapterData.Model = ($equip_manufact_def | Where-Object {$_.Sku -ieq $($adapter.Model)}).Name
+            $AdapterData.Model = ($EquipManufactDef | Where-Object {$_.Sku -ieq $($adapter.Model)}).Name
             $AdapterData.Model = $AdapterData.Model -replace "Cisco UCS ", ""
             # Report adapter name field based on server type.
             if ($IsBlade) {
@@ -843,12 +843,12 @@ function Get-InventoryServerData {
                 $DiskData.Power_State = $Disk.XtraProperty.PowerState
 
                 # Get common name of disk model and format text
-                $equipmentDef = $equip_manufact_def | Where-Object {$_.OemPartNumber -ieq $($Disk.Model)}
+                $equipmentDef = $EquipManufactDef | Where-Object {$_.OemPartNumber -ieq $($Disk.Model)}
                 $DiskData.Pid = $equipmentDef.Pid
                 $DiskData.Product_Name = $equipmentDef.Name
 
                 # Get detailed disk capability data
-                $capabilities = $equip_localdsk_def.Where({$_.Dn -match $Disk.Model})
+                $capabilities = $EquipLocalDskDef.Where({$_.Dn -match $Disk.Model})
                 $DiskData.Technology = $capabilities.Technology
                 $DiskData.Avg_Seek_Time = $capabilities.SeekAverageReadWrite
                 $DiskData.Track_To_Seek = $capabilities.SeekTrackToTrackReadWrite
@@ -1078,9 +1078,9 @@ function Invoke-UcsDataGather {
         $statistics = ""
     }
     # Get capabilities data from domain embedded catalogs
-    $equip_localdsk_def = Get-UcsEquipmentLocalDiskDef -Ucs $handle
-    $equip_manufact_def = Get-UcsEquipmentManufacturingDef -Ucs $handle
-    $equip_physical_def = Get-UcsEquipmentPhysicalDef -Ucs $handle
+    $EquipLocalDskDef = Get-UcsEquipmentLocalDiskDef -Ucs $handle
+    $EquipManufactDef = Get-UcsEquipmentManufacturingDef -Ucs $handle
+    $EquipPhysicalDef = Get-UcsEquipmentPhysicalDef -Ucs $handle
 
     # Initialize DomainHash variable for this domain
     Start-UcsTransaction -Ucs $handle
@@ -1137,7 +1137,7 @@ function Invoke-UcsDataGather {
         }
 
         # Get the common name of the fi from the manufacturing definition and format the text
-        $fiModel = ($equip_manufact_def | Where-Object  {$_.Sku -cmatch $($fi.Model)} | Select-Object Name).Name -replace "Cisco UCS ", ""
+        $fiModel = ($EquipManufactDef | Where-Object  {$_.Sku -cmatch $($fi.Model)} | Select-Object Name).Name -replace "Cisco UCS ", ""
         if($fiModel -is [array]) {$fiHash.Model = $fiModel.Item(0) -replace "Cisco UCS ", ""} else {$fiHash.Model = $fiModel -replace "Cisco UCS ", ""}
 
         $fiHash.Serial = $fi.Serial
@@ -1241,7 +1241,7 @@ function Invoke-UcsDataGather {
             $bladeHash.SlotId = $_.SlotId
             $bladeHash.Service_Profile = $_.AssignedToDn
             # Get width of blade and convert to slot count
-            $bladeHash.Width = [math]::floor((($equip_physical_def | Where-Object {$_.Dn -ilike "*$($bladeHash.Model)*"}).Width)/8)
+            $bladeHash.Width = [math]::floor((($EquipPhysicalDef | Where-Object {$_.Dn -ilike "*$($bladeHash.Model)*"}).Width)/8)
             # Increment used slot count by current blade width
             $slotCount += $bladeHash.Width
             $chassisHash.Blades += $bladeHash
@@ -1280,7 +1280,7 @@ function Invoke-UcsDataGather {
         $iomHash.Fabric_Id = $iom.SwitchId
 
         # Get common name of IOM model and format for viewing
-        $iomHash.Model = ($equip_manufact_def | Where-Object {$_.Sku -cmatch $($iom.Model)}).Name -replace "Cisco UCS ", ""
+        $iomHash.Model = ($EquipManufactDef | Where-Object {$_.Sku -cmatch $($iom.Model)}).Name -replace "Cisco UCS ", ""
         $iomHash.Serial = $iom.Serial
 
         # Get the IOM uplink port channel name if configured
@@ -1336,21 +1336,20 @@ function Invoke-UcsDataGather {
         handle = $handle
         AllFabricEp = $AllFabricEp
         memoryArray = $memoryArray
-        equip_localdsk_def = $equip_localdsk_def
-        equip_manufact_def = $equip_manufact_def
-        equip_physical_def = $equip_physical_def
+        EquipLocalDskDef = $EquipLocalDskDef
+        EquipManufactDef = $EquipManufactDef
+        EquipPhysicalDef = $EquipPhysicalDef
     }
     # Start Blade Inventory Collection
 
     # Set progress of current job
     $Process_Hash.Progress[$domain] = 36
-    Write-Host "`t36% | $(Get-ElapsedTime -FirstTimestamp $start) | Blade Data"
+
     $DomainHash.Inventory.Blades += Get-InventoryServerData @cmd_args -IsBlade
 
     # Start Rack Inventory Collection
     # Set progress of current job
     $Process_Hash.Progress[$domain] = 48
-    Write-Host "`t48% | $(Get-ElapsedTime -FirstTimestamp $start) | Rack Server Data"
     $DomainHash.Inventory.Rackmounts += Get-InventoryServerData @cmd_args
 
 
