@@ -957,8 +957,8 @@
 													<th>System</th>
 													<th>Kernel</th>
 													<th>IP</th>
-													<th>Ports Used</th>
-													<th>Ports Licensed</th>
+													<th>Installed Port Licenses</th>
+													<th>Used Port Licenses</th>
 													<th>Operability</th>
 													<th>Thermal</th>
 												</tr>
@@ -3091,8 +3091,8 @@
 						t.System + "</td><td>" +
 						t.Kernel + "</td><td>" +
 						t.IP + "</td><td>" +
-						t.Ports_Used + "</td><td>" +
 						t.Ports_Licensed + "</td><td>" +
+						t.Ports_Used + "</td><td>" +
 						t.Operability + "</td><td>" +
 						t.Thermal + "</td></tr>")
 				}),
@@ -3724,9 +3724,9 @@
 
 		function ValidateInventoryData() {
 			$("#FabricInterconnect tbody>tr").each(function() {
-				Number($(this).find("td:eq(7)").text()) > Number($(this).find("td:eq(8)").text())
-					? $(this).find("td:eq(7)").addClass("danger")
-					: Number($(this).find("td:eq(7)").text()) > Number($(this).find("td:eq(8)").text()) - 2 && $(this).find("td:eq(7)").addClass("warning")
+				Number($(this).find("td:eq(8)").text()) > Number($(this).find("td:eq(7)").text())
+					? $(this).find("td:eq(8)").addClass("danger")
+					: Number($(this).find("td:eq(8)").text()) > Number($(this).find("td:eq(7)").text()) - 2 && $(this).find("td:eq(8)").addClass("warning")
 			}),
 			$("#Chassis tbody>tr").each(function() {
 				0 == Number($(this).find("td:eq(10)").text()) && $(this).find("td:eq(10)").addClass("warning"),

@@ -759,7 +759,8 @@ function Get-InventoryServerData {
                 $AdapterData.Name = "Adaptor-$($adapter.PciSlot)"
             }
             $AdapterData.Slot = $Adapter.Id
-            $AdapterData.Fw = ($Adapter | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
+            $AdapterData.Fw = (Get-UcsFirmwareRunning -Deployment system -Filter "Dn -cmatch $($Adapter.Dn)").Version
+            # $AdapterData.Fw = ($Adapter | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
             $AdapterData.Serial = $Adapter.Serial
             # Add current adapter hash to server adapter array
             $ServerData.Adapters += $AdapterData
@@ -1017,7 +1018,8 @@ function Get-SystemData {
 
     # Get UCS Cluster State
     $Data.VIP = $DomainStatus.VirtualIpv4Address
-    $Data.UCSM = (Get-UcsMgmtController -Ucs $handle -Subject system | Get-UcsFirmwareRunning).Version
+    $Data.UCSM = (Get-UcsFirmwareRunning -Dn "sys/mgmt/fw-system").Version
+    # $Data.UCSM = (Get-UcsMgmtController -Ucs $handle -Subject system | Get-UcsFirmwareRunning).Version
     $Data.HA_Ready = $DomainStatus.HaReady
     # Get Full State and Logical backup configuration
     $Data.Backup_Policy = (Get-UcsMgmtBackupPolicy -Ucs $handle | Select-Object AdminState).AdminState
@@ -1302,8 +1304,10 @@ function Invoke-UcsDataGather {
         $iomHash.Channel = (Get-ucsportgroup -Ucs $handle -Dn "$($iom.Dn)/fabric-pc" | Get-UcsEtherSwitchIntFIoPc).Rn
 
         # Get IOM running and backup fw versions
-        $iomHash.Running_FW = (Get-UcsMgmtController -Ucs $handle -Dn "$($iom.Dn)/mgmt" | Get-UcsFirmwareRunning -Deployment system | Select-Object Version).Version
-        $iomHash.Backup_FW = (Get-UcsMgmtController -Ucs $handle -Dn "$($iom.Dn)/mgmt" | Get-UcsFirmwareUpdatable | Select-Object Version).Version
+        $iomHash.Running_FW = (Get-UcsFirmwareRunning -Deployment system -Filter "Dn -cmatch $($iom.Dn)").Version
+        # $iomHash.Running_FW = (Get-UcsMgmtController -Ucs $handle -Dn "$($iom.Dn)/mgmt" | Get-UcsFirmwareRunning -Deployment system | Select-Object Version).Version
+        $iomHash.Backup_FW = (Get-UcsFirmwareUpdatable -Filter "Dn -cmatch $($iom.Dn)").Version
+        # $iomHash.Backup_FW = (Get-UcsMgmtController -Ucs $handle -Dn "$($iom.Dn)/mgmt" | Get-UcsFirmwareUpdatable | Select-Object Version).Version
 
         # Initialize FabricPorts array for storing IOM port data
         $iomHash.FabricPorts = @()
@@ -1746,7 +1750,7 @@ function Invoke-UcsDataGather {
     # Start LAN Configuration
     # Get the collection time interval for port performance
     $DomainHash.Collection = @{}
-    $interval = (Get-UcsCollectionPolicy -Name "port" | Select-Object CollectionInterval).CollectionInterval
+    $interval = (Get-UcsCollectionPolicy -Ucs $handle -Name "port" | Select-Object CollectionInterval).CollectionInterval
     # Normalize collection interval to seconds
     Switch -wildcard (($interval -split '[0-9]')[-1]) {
         "minute*" {$DomainHash.Collection.Port = ((($interval -split '[a-z]')[0]) -as [int]) * 60}
