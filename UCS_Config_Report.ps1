@@ -997,7 +997,7 @@ function Get-InventoryServerData {
 function Get-SystemData {
     <#
     .DESCRIPTION
-        Extract inventory data for blades or rackmount servers
+        Extract general domain information: power/temperature stats, VIP, backup policy, call home
     .PARAMETER $handle
         Handle (object reference) to target UCS domain
     .PARAMETER $DomainStatus
@@ -1061,6 +1061,104 @@ function Get-SystemData {
 
     return $Data
 }
+function Get-InventoryFIData {
+    <#
+    .DESCRIPTION
+        Extract fabric interconnect inventory data
+    .PARAMETER $handle
+        Handle (object reference) to target UCS domain
+    .PARAMETER $DomainStatus
+        Object reference to results of Get-UcsStatus
+    .PARAMETER $EquipManufactDef
+        Object reference to results of Get-UcsEquipmentManufacturingDef
+    .OUTPUTS
+    #>
+
+    param (
+        [Parameter(Mandatory)]$handle,
+        [Parameter(Mandatory)]$DomainStatus,
+        [Parameter(Mandatory)]$EquipManufactDef
+    )
+
+    $Data = @()
+    $SystemData = @{}
+
+    $FISwitches = Get-UcsNetworkElement -Ucs $handle
+
+    foreach ($FISwitch in $FISwitches) {
+
+        # Hash variable for storing current FI details
+        $FISwitchData = @{}
+
+        $FISwitchData.Dn = $FISwitch.Dn
+        $FISwitchData.Fabric_Id = $FISwitch.Id
+        $FISwitchData.IP = $FISwitch.OobIfIp
+        $FISwitchData.Operability = $FISwitch.Operability
+        $FISwitchData.Thermal = $FISwitch.Thermal
+
+        # Get leadership role and management service state
+        if($FISwitch.Id -eq "A") {
+            # Inventory Tab Data
+            $FISwitchData.Role = $DomainStatus.FiALeadership
+            $FISwitchData.State = $DomainStatus.FiAManagementServicesState
+            # System Tab Data
+            $SystemData.FI_A_Role = $DomainStatus.FiALeadership
+            $SystemData.FI_A_IP = $FISwitch.OobIfIp
+        } else {
+            # Inventory Tab Data
+            $FISwitchData.Role = $DomainStatus.FiBLeadership
+            $FISwitchData.State = $DomainStatus.FiBManagementServicesState
+            # System Tab Data
+            $SystemData.FI_B_Role = $DomainStatus.FiBLeadership
+            $SystemData.FI_B_IP = $FISwitch.OobIfIp
+        }
+
+        # Get the common name of the fi from the manufacturing definition and format the text
+        $Model = ($EquipManufactDef | Where-Object  {$_.Sku -cmatch $($FISwitch.Model)} | Select-Object Name).Name -replace "Cisco UCS ", ""
+        $FISwitchData.Model = $Model -replace "Cisco UCS ", ""
+
+        # Array check unclear. Commenting to allow field testing without test.
+        # if($fiModel -is [array]) {$FISwitchData.Model = $fiModel.Item(0) -replace "Cisco UCS ", ""} else {$FISwitchData.Model = $fiModel -replace "Cisco UCS ", ""}
+
+        $FISwitchData.Serial = $FISwitch.Serial
+
+        # Get FI System and Kernel FW versions
+        $FIFirmware = Get-UcsFirmwareBootUnit | Where-Object {$_.Dn -match $FISwitch.Dn}
+        $FISwitchData.System = ($FIFirmware | Where-Object {$_.Type -eq "system"}).Version
+        $FISwitchData.Kernel = ($FIFirmware | Where-Object {$_.Type -eq "kernel"}).Version
+
+        # Get Port licensing information
+        $FILicenses = Get-UcsLicense -Ucs $handle -Scope $FISwitch.Id
+        foreach ($FILicense in $FILicenses) {
+            $FISwitchData.Ports_Used += $FILicense.UsedQuant
+            $FISwitchData.Ports_Used += $FILicense.SubordinateUsedQuant
+            $FISwitchData.Ports_Licensed += $FILicense.AbsQuant
+        }
+
+        # Get Ethernet and FC Switching mode of FI
+        $FISwitchData.Ethernet_Mode = (Get-UcsLanCloud -Ucs $handle).Mode
+        $FISwitchData.FC_Mode = (Get-UcsSanCloud -Ucs $handle).Mode
+
+        # Get Local storage, VLAN, and Zone utilization numbers
+        $FISwitchData.Storage = $FISwitch | Get-UcsStorageItem | Select-Object Name,Size,Used
+        $Properties = @("Limit","AccessVlanPortCount","BorderVlanPortCount","AllocStatus")
+        $FISwitchData.VLAN = $FISwitch | Get-UcsSwVlanPortNs | Select-Object $Properties
+        $FISwitchData.Zone = $FISwitch | Get-UcsManagedObject -Classid SwFabricZoneNs | Select-Object Limit,ZoneCount,AllocStatus
+
+        # Sort Expression to filter port id to be just the numerical port number and sort ascending
+        $SortExpression = {if ($_.Dn -match "(?=port[-]).*") {($matches[0] -replace ".*(?<=[-])",'') -as [int]}}
+        # Get Fabric Port Configuration and sort by port id using the above sort expression
+        $Properties = @("AdminState","Dn","IfRole","IfType","LicState","LicGP","Mac","Mode","OperState","OperSpeed","XcvrType","PeerDn","PeerPortId","PeerSlotId","PortId","SlotId","SwitchId")
+        $FISwitchData.Ports = Get-UcsFabricPort -Ucs $handle -SwitchId $FISwitch.Id -AdminState enabled | Sort-Object $SortExpression | Select-Object $Properties
+        $Properties = @("AdminState","Dn","IfRole","IfType","LicState","LicGP","Wwn","Mode","OperState","OperSpeed","XcvrType","PortId","SlotId","SwitchId")
+        $FISwitchData.FcUplinkPorts = Get-UcsFiFcPort -Ucs $handle -SwitchId "$($FISwitch.Id)" -AdminState 'enabled' | Sort-Object $SortExpression | Select-Object $Properties
+
+        # Store fi hash to domain hash variable
+        $Data += $FISwitchData
+
+    }
+    return $Data,$SystemData
+}
 function Invoke-UcsDataGather {
     param (
         [Parameter(Mandatory)]$domain,
@@ -1117,99 +1215,16 @@ function Invoke-UcsDataGather {
     # Set Job Progress
     $Process_Hash.Progress[$domain] = 12
     $DomainHash.Inventory.FIs = @()
-    # Iterate through Fabric Interconnects and grab relevant data points
-    Get-UcsNetworkElement -Ucs $handle | ForEach-Object {
-        # Store current pipe value to fi variable
-        $fi = $_
-        # Hash variable for storing current FI details
-        $fiHash = @{}
-        $fiHash.Dn = $fi.Dn
-        $fiHash.Fabric_Id = $fi.Id
-        $fiHash.Operability = $fi.Operability
-        $fiHash.Thermal = $fi.Thermal
-        # Get leadership role and management service state
-        if($fi.Id -eq "A") {
-            $fiHash.Role = $DomainStatus.FiALeadership
-            $fiHash.State = $DomainStatus.FiAManagementServicesState
-        } else {
-            $fiHash.Role = $DomainStatus.FiBLeadership
-            $fiHash.State = $DomainStatus.FiAManagementServicesState
-        }
-
-        # Get the common name of the fi from the manufacturing definition and format the text
-        $fiModel = ($EquipManufactDef | Where-Object  {$_.Sku -cmatch $($fi.Model)} | Select-Object Name).Name -replace "Cisco UCS ", ""
-        if($fiModel -is [array]) {$fiHash.Model = $fiModel.Item(0) -replace "Cisco UCS ", ""} else {$fiHash.Model = $fiModel -replace "Cisco UCS ", ""}
-
-        $fiHash.Serial = $fi.Serial
-        # Get FI System and Kernel FW versions
-        ${fiBoot} = Get-UcsMgmtController -Ucs $handle -Dn "$($fi.Dn)/mgmt" | Get-ucsfirmwarebootdefinition | Get-UcsFirmwareBootUnit -Filter 'Type -ieq system -or Type -ieq kernel' | Select-Object Type,Version
-        $fiHash.System = (${fiBoot} | Where-Object {$_.Type -eq "system"}).Version
-        $fiHash.Kernel = (${fiBoot} | Where-Object {$_.Type -eq "kernel"}).Version
-
-        # Get out of band management IP and Port licensing information
-        $fiHash.IP = $fi.OobIfIp
-        $ucsLicense = Get-UcsLicense -Ucs $handle -Scope $fi.Id
-        $ports_used = ($ucsLicense | Select-Object UsedQuant).UsedQuant
-        if ($ports_used -is [system.array]) {
-            $ports_used_total = 0
-            $ports_used | ForEach-Object {$ports_used_total += $_}
-            $fiHash.Ports_Used = $ports_used_total
-            Remove-Variable ports_used_total
-        } else {
-            $fiHash.Ports_Used = $ports_used
-        }
-        $ports_used_sub = ($ucsLicense | Select-Object SubordinateUsedQuant).SubordinateUsedQuant
-        if ($ports_used_sub -and $ports_used_sub -is [system.array]) {
-            $ports_used_sub_total = 0
-            $ports_used_sub | ForEach-Object {$ports_used_sub_total += $_}
-            $fiHash.Ports_Used += $ports_used_sub_total
-            Remove-Variable ports_used_sub_total
-        } else {
-            $fiHash.Ports_Used += $ports_used_sub
-        }
-        Remove-Variable ports_used_sub
-        Remove-Variable ports_used
-        $ports_licensed = ($ucsLicense | Select-Object AbsQuant).AbsQuant
-        if ($ports_licensed -is [system.array]) {
-            $ports_licensed_total = 0
-            $ports_licensed | ForEach-Object {$ports_licensed_total += $_}
-            $fiHash.Ports_Licensed = $ports_licensed_total
-            Remove-Variable ports_licensed_total
-        } else {
-            $fiHash.Ports_Licensed = $ports_licensed
-        }
-        Remove-Variable ports_licensed
-        if ($ports_used) {Remove-Variable ports_used}
-
-        # Get Ethernet and FC Switching mode of FI
-        $fiHash.Ethernet_Mode = (Get-UcsLanCloud -Ucs $handle).Mode
-        $fiHash.FC_Mode = (Get-UcsSanCloud -Ucs $handle).Mode
-
-        # Get Local storage, VLAN, and Zone utilization numbers
-        $fiHash.Storage = $fi | Get-UcsStorageItem | Select-Object Name,Size,Used
-        $fiHash.VLAN = $fi | Get-UcsSwVlanPortNs | Select-Object Limit,AccessVlanPortCount,BorderVlanPortCount,AllocStatus
-        $fiHash.Zone = $fi | Get-UcsManagedObject -Classid SwFabricZoneNs | Select-Object Limit,ZoneCount,AllocStatus
-
-        # Sort Expression to filter port id to be just the numerical port number and sort ascending
-        $sortExpr = {if ($_.Dn -match "(?=port[-]).*") {($matches[0] -replace ".*(?<=[-])",'') -as [int]}}
-        # Get Fabric Port Configuration and sort by port id using the above sort expression
-        $fiHash.Ports = Get-UcsFabricPort -Ucs $handle -SwitchId "$($fi.Id)" -AdminState enabled | Sort-Object $sortExpr | Select-Object AdminState,Dn,IfRole,IfType,LicState,LicGP,Mac,Mode,OperState,OperSpeed,XcvrType,PeerDn,PeerPortId,PeerSlotId,PortId,SlotId,SwitchId
-        $fiHash.FcUplinkPorts = Get-UcsFiFcPort -Ucs $handle -SwitchId "$($fi.Id)" -AdminState 'enabled' | Sort-Object $sortExpr | Select-Object AdminState,Dn,IfRole,IfType,LicState,LicGP,Wwn,Mode,OperState,OperSpeed,XcvrType,PortId,SlotId,SwitchId
-
-        # Store fi hash to domain hash variable
-        $DomainHash.Inventory.FIs += $fiHash
-
-        # Get FI Role and IP for system tab of report
-        if($fiHash.Fabric_Id -eq 'A') {
-            $DomainHash.System.FI_A_Role = $fiHash.Role
-            $DomainHash.System.FI_A_IP = $fiHash.IP
-        } else {
-            $DomainHash.System.FI_B_Role = $fiHash.Role
-            $DomainHash.System.FI_B_IP = $fiHash.IP
-        }
-
+    $cmd_args = @{
+        handle = $handle
+        DomainStatus = $DomainStatus
+        EquipManufactDef = $EquipManufactDef
     }
-    # End FI Inventory Collection
+    $DomainHash.Inventory.FIs, $SystemItems = Get-InventoryFIData @cmd_args
+    # Merge returned System Tab data into existing data
+    $DomainHash.System = $DomainHash.System + $SystemItems
+
+    # End Fabric Interconnect Inventory Collection
 
     # Start Chassis Inventory Collection
 
