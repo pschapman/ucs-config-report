@@ -1460,6 +1460,8 @@ function Invoke-UcsDataGather {
     $DomainHash.San = @{}
     $DomainHash.Faults = @()
 
+    $DomainHash.ReportDate = Get-Date -format MM/dd/yyyy
+
     # Get status. Used by system data and FI data
     $DomainStatus = Get-UcsStatus -Ucs $handle
     $DomainName = $DomainStatus.Name
