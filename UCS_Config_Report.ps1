@@ -708,7 +708,7 @@ function Get-InventoryServerData {
             $ServerData.Chassis = $Server.ChassisId
             $ServerData.Slot = $Server.SlotId
         } else {
-            $ServerData.Rack_Id = $rack.Id
+            $ServerData.Rack_Id = $Server.Id
         }
         # Get Model and Description common names and format the text
         $ServerData.Model = (($EquipManufactDef.Where({$_.Sku -ieq $($Server.Model)})).Name).Replace("Cisco UCS ", "")
@@ -823,7 +823,7 @@ function Get-InventoryServerData {
             $ControllerData.Disks = @()
             $ControllerData.Disk_Count = 0
             # Iterate through each local disk and grab relevant data
-            $Disks = $Controller | Get-UcsStorageLocalDisk -Presence "equipped"
+            $Disks = $Controller | Get-UcsStorageLocalDisk -Presence "equipped" | Sort-Object -Property Id
             foreach ($Disk in $Disks) {
                 # Hash variable for storing current disk data
                 $DiskData = @{}
@@ -1518,7 +1518,7 @@ function Invoke-UcsDataGather {
         EquipManufactDef = $EquipManufactDef
         AllRunningFirmware = $AllRunningFirmware
     }
-    $DomainHash.Inventory.IOMs = Get-InventoryIOModuleData @cmd_args
+    $DomainHash.Inventory.IOMs += Get-InventoryIOModuleData @cmd_args
 
     # End IOM Inventory Collection
 
