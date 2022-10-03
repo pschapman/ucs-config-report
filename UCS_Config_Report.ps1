@@ -673,6 +673,8 @@ function Get-InventoryServerData {
         Object reference to results of Get-UcsEquipmentManufacturingDef
     .PARAMETER $EquipPhysicalDef
         Object reference to results of Get-UcsEquipmentPhysicalkDef
+    .PARAMETER $AllRunningFirmware
+        Object reference to results of Get-UcsFirmwareRunning
     .PARAMETER $IsBlade
         Indicates invocation is running unique commands for blade servers. Uses rackmount search if absent.
     .OUTPUTS
@@ -686,9 +688,9 @@ function Get-InventoryServerData {
         [Parameter(Mandatory)]$EquipLocalDskDef,
         [Parameter(Mandatory)]$EquipManufactDef,
         [Parameter(Mandatory)]$EquipPhysicalDef,
+        [Parameter(Mandatory)]$AllRunningFirmware,
         [Switch]$IsBlade
     )
-    $AllRunningFirmware = Get-UcsFirmwareRunning
     $AllVirtualCircuits = Get-UcsDcxVc
 
     $Data = @()
@@ -759,8 +761,7 @@ function Get-InventoryServerData {
                 $AdapterData.Name = "Adaptor-$($adapter.PciSlot)"
             }
             $AdapterData.Slot = $Adapter.Id
-            $AdapterData.Fw = (Get-UcsFirmwareRunning -Deployment system -Filter "Dn -cmatch $($Adapter.Dn)").Version
-            # $AdapterData.Fw = ($Adapter | Get-UcsMgmtController | Get-UcsFirmwareRunning -Deployment system).Version
+            $AdapterData.Fw = ($AllRunningFirmware.Where({$_.Deployment -eq 'system' -and $_.Dn -match $Adapter.Dn})).Version
             $AdapterData.Serial = $Adapter.Serial
             # Add current adapter hash to server adapter array
             $ServerData.Adapters += $AdapterData
@@ -1018,8 +1019,7 @@ function Get-SystemData {
 
     # Get UCS Cluster State
     $Data.VIP = $DomainStatus.VirtualIpv4Address
-    $Data.UCSM = (Get-UcsFirmwareRunning -Dn "sys/mgmt/fw-system").Version
-    # $Data.UCSM = (Get-UcsMgmtController -Ucs $handle -Subject system | Get-UcsFirmwareRunning).Version
+    $Data.UCSM = ($AllRunningFirmware.Where({$_.Dn -match "sys/mgmt/fw-system"})).Version
     $Data.HA_Ready = $DomainStatus.HaReady
     # Get Full State and Logical backup configuration
     $Data.Backup_Policy = (Get-UcsMgmtBackupPolicy -Ucs $handle | Select-Object AdminState).AdminState
@@ -1161,6 +1161,166 @@ function Get-InventoryFIData {
     }
     return $Data,$SystemData
 }
+
+function Get-InventoryChassisData {
+    <#
+    .DESCRIPTION
+        Extract inventory data for chassis including basic member blade data
+    .PARAMETER $handle
+        Handle (object reference) to target UCS domain
+    .PARAMETER $EquipPhysicalDef
+        Object reference to results of Get-UcsEquipmentPhysicalkDef
+    .OUTPUTS
+    #>
+
+    param (
+        [Parameter(Mandatory)]$handle,
+        [Parameter(Mandatory)]$EquipPhysicalDef
+    )
+
+    $Data = @()
+
+    # Iterate through chassis inventory and grab relevant data
+    $AllChassis = Get-UcsChassis -Ucs $handle
+    foreach ($Chassis in $AllChassis) {
+        # Hash variable for storing current chassis data
+        $ChassisData = @{}
+
+        $ChassisData.Dn = $Chassis.Dn
+        $ChassisData.Id = $Chassis.Id
+        $ChassisData.Model = $Chassis.Model
+        $ChassisData.Status = $Chassis.OperState
+        $ChassisData.Operability = $Chassis.Operability
+        $ChassisData.Power = $Chassis.Power
+        $ChassisData.Thermal = $Chassis.Thermal
+        $ChassisData.Serial = $Chassis.Serial
+
+        $ChassisData.Blades = @()
+
+        # Initialize chassis used slot count to 0
+        $UsedSlots = 0
+        # Iterate through all blades within current chassis
+        $Blades = Get-UcsBlade -ChassisId $Chassis.Id
+        foreach ($Blade in $Blades) {
+            # Hash variable for storing current blade data
+            $BladeData = @{}
+
+            $BladeData.Model = $Blade.Model
+            $BladeData.SlotId = $Blade.SlotId
+            $BladeData.Service_Profile = $Blade.AssignedToDn
+            # Get width of blade and convert to slot count
+            $BladeData.Width = [math]::floor((($EquipPhysicalDef | Where-Object {$_.Dn -ilike "*$($Blade.Model)*"}).Width)/8)
+            # Increment used slot count by current blade width
+            $UsedSlots += $BladeData.Width
+            $ChassisData.Blades += $BladeData
+        }
+        # Get Used slots and slots available from iterated slot count
+        $ChassisData.SlotsUsed = $UsedSlots
+        $ChassisData.SlotsAvailable = 8 - $UsedSlots
+
+        # Get chassis PSU data and redundancy mode
+        $ChassisData.Psus = @()
+        $ChassisData.Psus = $Chassis | Get-UcsPsu | Sort-Object Id | Select-Object Type,Id,Model,Serial,Dn
+        $ChassisData.Power_Redundancy = ($Chassis | Get-UcsComputePsuControl | Select-Object Redundancy).Redundancy
+
+        # Add chassis to domain hash variable
+        $Data += $ChassisData
+    }
+    return $Data
+}
+
+function Get-InventoryIOModuleData {
+    <#
+    .DESCRIPTION
+        Extract inventory data for I/O Modules (FEX)
+    .PARAMETER $handle
+        Handle (object reference) to target UCS domain
+    .PARAMETER $EquipManufactDef
+        Object reference to results of Get-UcsEquipmentManufacturingDef
+    .PARAMETER $AllRunningFirmware
+        Object reference to results of Get-UcsFirmwareRunning
+    .OUTPUTS
+    #>
+
+    param (
+        [Parameter(Mandatory)]$handle,
+        [Parameter(Mandatory)]$EquipManufactDef,
+        [Parameter(Mandatory)]$AllRunningFirmware
+    )
+
+    $Data = @()
+
+    # Get all fabric and blackplane ports for future iteration
+    $FabricPorts = Get-UcsEtherSwitchIntFIo -Ucs $handle
+    $BackplanePorts = Get-UcsEtherServerIntFIo -Ucs $handle
+
+    # Iterate through each IOM and grab relevant data
+    $Ioms = Get-UcsIom -Ucs $handle
+    foreach ($Iom in $Ioms) {
+        # Hash variable for storing current IOM data
+        $IomData = @{}
+
+        $IomData.Dn = $Iom.Dn
+        $IomData.Chassis = $Iom.ChassisId
+        $IomData.Fabric_Id = $Iom.SwitchId
+        $IomData.Serial = $Iom.Serial
+
+        # Get common name of IOM model and format for viewing
+        $IomData.Model = ($EquipManufactDef | Where-Object {$_.Sku -cmatch $($Iom.Model)}).Name -replace "Cisco UCS ", ""
+
+        # Get the IOM uplink port channel name if configured
+        $IomData.Channel = (Get-UcsPortGroup -Ucs $handle -Dn "$($Iom.Dn)/fabric-pc" | Get-UcsEtherSwitchIntFIoPc).Rn
+
+        # Get IOM running and backup fw versions
+        $IomData.Running_FW = ($AllRunningFirmware.Where({$_.Dn -match "sys/mgmt/fw-system"})).Version
+        $IomData.Backup_FW = (Get-UcsFirmwareUpdatable -Filter "Dn -cmatch $($Iom.Dn)").Version
+
+        # IOM Port Filter
+        $ObjectFilter = {$_.ChassisId -eq "$($Iom.ChassisId)" -and $_.SwitchId -eq "$($Iom.SwitchId)"}
+
+        # Initialize FabricPorts array for storing IOM port data
+        $IomData.FabricPorts = @()
+
+        # Iterate through all fabric ports tied to the current IOM
+        $IomFabricPorts = $FabricPorts | Where-Object $ObjectFilter | Sort-Object -Property PortId
+        foreach ($IomFabricPort in $IomFabricPorts) {
+            # Hash variable for storing current fabric port data
+            $PortData = @{}
+
+            $PortData.Name = 'Fabric Port ' + $IomFabricPort.SlotId + '/' + $IomFabricPort.PortId
+            $PortData.OperState = $IomFabricPort.OperState
+            $PortData.PortChannel = $IomFabricPort.EpDn
+            $PortData.PeerSlotId = $IomFabricPort.PeerSlotId
+            $PortData.PeerPortId = $IomFabricPort.PeerPortId
+            $PortData.FabricId = $IomFabricPort.SwitchId
+            $PortData.Ack = $IomFabricPort.Ack
+            $PortData.Peer = $IomFabricPort.PeerDn
+            # Add current fabric port hash variable to FabricPorts array
+            $IomData.FabricPorts += $PortData
+        }
+        # Initialize BackplanePorts array for storing IOM port data
+        $IomData.BackplanePorts = @()
+
+        # Iterate through all backplane ports tied to the current IOM
+        $IomBackplanePorts = $BackplanePorts | Where-Object $ObjectFilter | Sort-Object -Property PortId
+        foreach ($IomBackplanePort in $IomBackplanePorts) {
+            # Hash variable for storing current backplane port data
+            $PortData = @{}
+
+            $PortData.Name = 'Backplane Port ' + $IomBackplanePort.SlotId + '/' + $IomBackplanePort.PortId
+            $PortData.OperState = $IomBackplanePort.OperState
+            $PortData.PortChannel = $IomBackplanePort.EpDn
+            $PortData.FabricId = $IomBackplanePort.SwitchId
+            $PortData.Peer = $IomBackplanePort.PeerDn
+            # Add current backplane port hash variable to FabricPorts array
+            $IomData.BackplanePorts += $PortData
+        }
+        # Add IOM to domain hash variable
+        $Data += $IomData
+    }
+    return $Data
+}
+
 function Invoke-UcsDataGather {
     param (
         [Parameter(Mandatory)]$domain,
@@ -1177,10 +1337,14 @@ function Invoke-UcsDataGather {
     } else {
         $statistics = ""
     }
+
     # Get capabilities data from domain embedded catalogs
     $EquipLocalDskDef = Get-UcsEquipmentLocalDiskDef -Ucs $handle
     $EquipManufactDef = Get-UcsEquipmentManufacturingDef -Ucs $handle
     $EquipPhysicalDef = Get-UcsEquipmentPhysicalDef -Ucs $handle
+
+    # Get running firmware for all components
+    $AllRunningFirmware = Get-UcsFirmwareRunning -Ucs $handle
 
     # Initialize DomainHash variable for this domain
     Start-UcsTransaction -Ucs $handle
@@ -1230,51 +1394,15 @@ function Invoke-UcsDataGather {
 
     # Start Chassis Inventory Collection
 
+    # Set Job Progress
     # Initialize array variable for storing Chassis data
     $DomainHash.Inventory.Chassis = @()
-    # Iterate through chassis inventory and grab relevant data
-    Get-UcsChassis -Ucs $handle | ForEach-Object {
-        # Store current pipe variable
-        $chassis = $_
-        # Hash variable for storing current chassis data
-        $chassisHash = @{}
-        $chassisHash.Dn = $chassis.Dn
-        $chassisHash.Id = $chassis.Id
-        $chassisHash.Model = $chassis.Model
-        $chassisHash.Status = $chassis.OperState
-        $chassisHash.Operability = $chassis.Operability
-        $chassisHash.Power = $chassis.Power
-        $chassisHash.Thermal = $chassis.Thermal
-        $chassisHash.Serial = $chassis.Serial
-        $chassisHash.Blades = @()
-
-        # Initialize chassis used slot count to 0
-        $slotCount = 0
-        # Iterate through all blades within current chassis
-        $chassis | Get-UcsBlade | Select-Object Model,SlotId,AssignedToDn | ForEach-Object {
-            # Hash variable for storing current blade data
-            $bladeHash = @{}
-            $bladeHash.Model = $_.Model
-            $bladeHash.SlotId = $_.SlotId
-            $bladeHash.Service_Profile = $_.AssignedToDn
-            # Get width of blade and convert to slot count
-            $bladeHash.Width = [math]::floor((($EquipPhysicalDef | Where-Object {$_.Dn -ilike "*$($bladeHash.Model)*"}).Width)/8)
-            # Increment used slot count by current blade width
-            $slotCount += $bladeHash.Width
-            $chassisHash.Blades += $bladeHash
-        }
-        # Get Used slots and slots available from iterated slot count
-        $chassisHash.SlotsUsed = $slotCount
-        $chassisHash.SlotsAvailable = 8 - $slotCount
-
-        # Get chassis PSU data and redundancy mode
-        $chassisHash.Psus = @()
-        $chassisHash.Psus = $chassis | Get-UcsPsu | Sort-Object Id | Select-Object Type,Id,Model,Serial,Dn
-        $chassisHash.Power_Redundancy = ($chassis | Get-UcsComputePsuControl | Select-Object Redundancy).Redundancy
-
-        # Add chassis to domain hash variable
-        $DomainHash.Inventory.Chassis += $chassisHash
+    $cmd_args = @{
+        handle = $handle
+        EquipPhysicalDef = $EquipPhysicalDef
     }
+    $DomainHash.Inventory.Chassis += Get-InventoryChassisData @cmd_args
+
     # End Chassis Inventory Collection
 
     # Start IOM Inventory Collection
@@ -1282,70 +1410,19 @@ function Invoke-UcsDataGather {
     # Increment job progress
     $Process_Hash.Progress[$domain] = 24
 
-    # Get all fabric and blackplane ports for future iteration
-    $FabricPorts = Get-UcsEtherSwitchIntFIo -Ucs $handle
-    $BackplanePorts = Get-UcsEtherServerIntFIo -Ucs $handle
 
     # Initialize array for storing IOM inventory data
     $DomainHash.Inventory.IOMs = @()
-    # Iterate through each IOM and grab relevant data
-    Get-UcsIom -Ucs $handle | Select-Object ChassisId,SwitchId,Model,Serial,Dn | ForEach-Object {
-        $iom = $_
-        $iomHash = @{}
-        $iomHash.Dn = $iom.Dn
-        $iomHash.Chassis = $iom.ChassisId
-        $iomHash.Fabric_Id = $iom.SwitchId
-
-        # Get common name of IOM model and format for viewing
-        $iomHash.Model = ($EquipManufactDef | Where-Object {$_.Sku -cmatch $($iom.Model)}).Name -replace "Cisco UCS ", ""
-        $iomHash.Serial = $iom.Serial
-
-        # Get the IOM uplink port channel name if configured
-        $iomHash.Channel = (Get-ucsportgroup -Ucs $handle -Dn "$($iom.Dn)/fabric-pc" | Get-UcsEtherSwitchIntFIoPc).Rn
-
-        # Get IOM running and backup fw versions
-        $iomHash.Running_FW = (Get-UcsFirmwareRunning -Deployment system -Filter "Dn -cmatch $($iom.Dn)").Version
-        # $iomHash.Running_FW = (Get-UcsMgmtController -Ucs $handle -Dn "$($iom.Dn)/mgmt" | Get-UcsFirmwareRunning -Deployment system | Select-Object Version).Version
-        $iomHash.Backup_FW = (Get-UcsFirmwareUpdatable -Filter "Dn -cmatch $($iom.Dn)").Version
-        # $iomHash.Backup_FW = (Get-UcsMgmtController -Ucs $handle -Dn "$($iom.Dn)/mgmt" | Get-UcsFirmwareUpdatable | Select-Object Version).Version
-
-        # Initialize FabricPorts array for storing IOM port data
-        $iomHash.FabricPorts = @()
-
-        # Iterate through all fabric ports tied to the current IOM
-        $FabricPorts | Where-Object {$_.ChassisId -eq "$($iomHash.Chassis)" -and $_.SwitchId -eq "$($iomHash.Fabric_Id)"} | Select-Object SlotId,PortId,OperState,EpDn,PeerSlotId,PeerPortId,SwitchId,Ack,PeerDn | ForEach-Object {
-            # Hash variable for storing current fabric port data
-            $portHash = @{}
-            $portHash.Name = 'Fabric Port ' + $_.SlotId + '/' + $_.PortId
-            $portHash.OperState = $_.OperState
-            $portHash.PortChannel = $_.EpDn
-            $portHash.PeerSlotId = $_.PeerSlotId
-            $portHash.PeerPortId = $_.PeerPortId
-            $portHash.FabricId = $_.SwitchId
-            $portHash.Ack = $_.Ack
-            $portHash.Peer = $_.PeerDn
-            # Add current fabric port hash variable to FabricPorts array
-            $iomHash.FabricPorts += $portHash
-        }
-        # Initialize BackplanePorts array for storing IOM port data
-        $iomHash.BackplanePorts = @()
-
-        # Iterate through all backplane ports tied to the current IOM
-        $BackplanePorts | Where-Object {$_.ChassisId -eq "$($iomHash.Chassis)" -and $_.SwitchId -eq "$($iomHash.Fabric_Id)"} | Sort-Object {($_.SlotId) -as [int]},{($_.PortId) -as [int]} | Select-Object SlotId,PortId,OperState,EpDn,SwitchId,PeerDn | ForEach-Object {
-            # Hash variable for storing current backplane port data
-            $portHash = @{}
-            $portHash.Name = 'Backplane Port ' + $_.SlotId + '/' + $_.PortId
-            $portHash.OperState = $_.OperState
-            $portHash.PortChannel = $_.EpDn
-            $portHash.FabricId = $_.SwitchId
-            $portHash.Peer = $_.PeerDn
-            # Add current backplane port hash variable to FabricPorts array
-            $iomHash.BackplanePorts += $portHash
-        }
-        # Add IOM to domain hash variable
-        $DomainHash.Inventory.IOMs += $iomHash
+    $cmd_args = @{
+        handle = $handle
+        EquipManufactDef = $EquipManufactDef
+        AllRunningFirmware = $AllRunningFirmware
     }
+    $DomainHash.Inventory.IOMs = Get-InventoryIOModuleData @cmd_args
+
     # End IOM Inventory Collection
+
+    # Start Server Inventory Collection
 
     # Get all memory and vif data for future iteration
     $memoryArray = Get-UcsMemoryUnit -Ucs $handle
@@ -1358,9 +1435,10 @@ function Invoke-UcsDataGather {
         EquipLocalDskDef = $EquipLocalDskDef
         EquipManufactDef = $EquipManufactDef
         EquipPhysicalDef = $EquipPhysicalDef
+        AllRunningFirmware = $AllRunningFirmware
     }
-    # Start Blade Inventory Collection
 
+    # Start Blade Inventory Collection
     # Set progress of current job
     $Process_Hash.Progress[$domain] = 36
 
@@ -1371,6 +1449,7 @@ function Invoke-UcsDataGather {
     $Process_Hash.Progress[$domain] = 48
     $DomainHash.Inventory.Rackmounts += Get-InventoryServerData @cmd_args
 
+    # End Server Inventory Collection
 
     # Start Policy Data Collection
 
