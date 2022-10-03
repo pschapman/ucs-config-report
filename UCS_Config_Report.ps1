@@ -1321,6 +1321,104 @@ function Get-InventoryIOModuleData {
     return $Data
 }
 
+function Get-PolicyData {
+    <#
+    .DESCRIPTION
+        Extract policy data
+    .PARAMETER $handle
+        Handle (object reference) to target UCS domain
+    .PARAMETER $MaintenancePolicies
+        Object reference to results of Get-UcsMaintenancePolicy
+    .OUTPUTS
+    #>
+
+    param (
+        [Parameter(Mandatory)]$handle,
+        [Parameter(Mandatory)]$MaintenancePolicies
+    )
+
+    $Data = @{}
+    $Data.SystemPolicies = @{}
+    $Data.Mgmt_IP_Pool = @{}
+
+    # Grab DNS and NTP data
+    $Data.SystemPolicies.DNS = @()
+    $Data.SystemPolicies.DNS += (Get-UcsDnsServer -Ucs $handle).Name | Select-Object -Unique
+    $Data.SystemPolicies.NTP = @()
+    $Data.SystemPolicies.NTP += (Get-UcsNtpServer -Ucs $handle).Name | Select-Object -Unique
+    $Data.SystemPolicies.Timezone = (Get-UcsTimezone -Ucs $handle).Timezone | Select-Object -Unique
+
+    # Get chassis discovery data
+    $Chassis_Discovery = Get-UcsChassisDiscoveryPolicy -Ucs $handle
+    $Data.SystemPolicies.Action = $Chassis_Discovery.Action
+    $Data.SystemPolicies.Grouping = $Chassis_Discovery.LinkAggregationPref
+
+    $Data.SystemPolicies.Power = (Get-UcsPowerControlPolicy -Ucs $handle).Redundancy
+    $Data.SystemPolicies.FirmwareAutoSyncAction = (Get-UcsFirmwareAutoSyncPolicy -Ucs $handle).SyncState
+    $Data.SystemPolicies.Maint = ($MaintenancePolicies.Where({$_.Name -eq 'default'})).UptimeDisr
+
+    # Maintenance Policies
+    $Data.Maintenance = @()
+    $Data.Maintenance += $MaintenancePolicies | Select-Object Name,Dn,UptimeDisr,Descr,SchedName
+
+    # Host Firmware Packages
+    $Data.FW_Packages = @()
+    $Data.FW_Packages += Get-UcsFirmwareComputeHostPack -Ucs $handle | Select-Object Name,BladeBundleVersion,RackBundleVersion
+
+    # LDAP Policy Data
+    $Data.LDAP_Providers = @()
+    $Data.LDAP_Providers += Get-UcsLdapProvider -Ucs $handle | Select-Object Name,Rootdn,Basedn,Attribute
+    $Data.LDAP_Mappings = @()
+    $LdapGroupMaps = Get-UcsLdapGroupMap -Ucs $handle
+    foreach ($LdapGroupMap in $LdapGroupMaps) {
+        $LdapGroupMapData = @{}
+        $LdapGroupMapData.Name = $LdapGroupMap.Name
+        $LdapGroupMapData.Roles = ($LdapGroupMap | Get-UcsUserRole).Name
+        $LdapGroupMapData.Locales = ($LdapGroupMap | Get-UcsUserLocale).Name
+        $Data.LDAP_Mappings += $LdapGroupMapData
+    }
+
+    # Boot Order Policies
+    $Data.Boot_Policies = @()
+    $AllBootPolicies = Get-UcsBootPolicy -Ucs $handle
+    $Data.Boot_Policies += Get-ConfiguredBootOrder -BootPolicies $AllBootPolicies
+
+    # Get the default external management pool
+    $ExtMgmtPoolBlock = Get-UcsIpPoolBlock -Ucs $handle -Filter "Dn -cmatch ext-mgmt"
+    $Data.Mgmt_IP_Pool.From = $ExtMgmtPoolBlock.From
+    $Data.Mgmt_IP_Pool.To = $ExtMgmtPoolBlock.To
+
+    $ExtMgmtPoolParent = $ExtMgmtPoolBlock | Get-UcsParent
+    $Data.Mgmt_IP_Pool.Size = $ExtMgmtPoolParent.Size
+    $Data.Mgmt_IP_Pool.Assigned = $ExtMgmtPoolParent.Assigned
+
+    # Mgmt IP Allocation
+    $Data.Mgmt_IP_Allocation = @()
+    $Assignments = $ExtMgmtPoolParent | Get-UcsIpPoolPooled -Filter "Assigned -ieq yes"
+    foreach ($Assignment in $Assignments) {
+        $AssignmentData = @{}
+        $AssignmentData.Dn = $Assignment.AssignedToDn -replace "/mgmt/*.*", ""
+        $AssignmentData.IP = $Assignment.Id
+        $AssignmentData.Subnet = $Assignment.Subnet
+        $AssignmentData.GW = $Assignment.DefGw
+        $Data.Mgmt_IP_Allocation += $AssignmentData
+    }
+
+    # UUID
+    $Data.UUID_Pools = @()
+    $Data.UUID_Pools += Get-UcsUuidSuffixPool -Ucs $handle | Select-Object Dn,Name,AssignmentOrder,Prefix,Size,Assigned
+    $Data.UUID_Assignments = @()
+    $Data.UUID_Assignments += Get-UcsUuidpoolAddr -Ucs $handle -Assigned yes | select-object AssignedToDn,Id | sort-object -property AssignedToDn
+
+    # Server Pools
+    $Data.Server_Pools = @()
+    $Data.Server_Pools += Get-UcsServerPool -Ucs $handle | Select-Object Dn,Name,Size,Assigned
+    $Data.Server_Pool_Assignments = @()
+    $Data.Server_Pool_Assignments += Get-UcsServerPoolAssignment -Ucs $handle | Select-Object Name,AssignedToDn
+
+    return $Data
+}
+
 function Invoke-UcsDataGather {
     param (
         [Parameter(Mandatory)]$domain,
@@ -1345,6 +1443,9 @@ function Invoke-UcsDataGather {
 
     # Get running firmware for all components
     $AllRunningFirmware = Get-UcsFirmwareRunning -Ucs $handle
+
+    # Get all Maintenance policies
+    $MaintenancePolicies = Get-UcsMaintenancePolicy -Ucs $handle
 
     # Initialize DomainHash variable for this domain
     Start-UcsTransaction -Ucs $handle
@@ -1410,7 +1511,6 @@ function Invoke-UcsDataGather {
     # Increment job progress
     $Process_Hash.Progress[$domain] = 24
 
-
     # Initialize array for storing IOM inventory data
     $DomainHash.Inventory.IOMs = @()
     $cmd_args = @{
@@ -1441,7 +1541,6 @@ function Invoke-UcsDataGather {
     # Start Blade Inventory Collection
     # Set progress of current job
     $Process_Hash.Progress[$domain] = 36
-
     $DomainHash.Inventory.Blades += Get-InventoryServerData @cmd_args -IsBlade
 
     # Start Rack Inventory Collection
@@ -1451,89 +1550,19 @@ function Invoke-UcsDataGather {
 
     # End Server Inventory Collection
 
-    # Start Policy Data Collection
+    # Start Policy Data and Pools Collection
 
     # Update job progress percent
     $Process_Hash.Progress[$domain] = 60
     # Hash variable for storing system policies
     $DomainHash.Policies.SystemPolicies = @{}
-    # Grab DNS and NTP data
-    $DomainHash.Policies.SystemPolicies.DNS = @()
-    $DomainHash.Policies.SystemPolicies.DNS += (Get-UcsDnsServer -Ucs $handle).Name | Select-Object -Unique
-    $DomainHash.Policies.SystemPolicies.NTP = @()
-    $DomainHash.Policies.SystemPolicies.NTP += (Get-UcsNtpServer -Ucs $handle).Name | Select-Object -Unique
-    # Get chassis discovery data for future use
-    $Chassis_Discovery = Get-UcsChassisDiscoveryPolicy -Ucs $handle | Select-Object Action,LinkAggregationPref
-    $DomainHash.Policies.SystemPolicies.Action = $Chassis_Discovery.Action
-    $DomainHash.Policies.SystemPolicies.Grouping = $Chassis_Discovery.LinkAggregationPref
-    $DomainHash.Policies.SystemPolicies.Power = (Get-UcsPowerControlPolicy -Ucs $handle | Select-Object Redundancy).Redundancy
-    $DomainHash.Policies.SystemPolicies.FirmwareAutoSyncAction = (Get-UcsFirmwareAutoSyncPolicy | Select-Object SyncState).SyncState
-    $DomainHash.Policies.SystemPolicies.Maint = (Get-UcsMaintenancePolicy -Name "default" -Ucs $handle | Select-Object UptimeDisr).UptimeDisr
-    $DomainHash.Policies.SystemPolicies.Timezone = (Get-UcsTimezone -Ucs $handle).Timezone | Select-Object -Unique
-
-    # Maintenance Policies
-    $DomainHash.Policies.Maintenance = @()
-    $DomainHash.Policies.Maintenance += Get-UcsMaintenancePolicy -Ucs $handle | Select-Object Name,Dn,UptimeDisr,Descr,SchedName
-
-    # Host Firmware Packages
-    $DomainHash.Policies.FW_Packages = @()
-    $DomainHash.Policies.FW_Packages += Get-UcsFirmwareComputeHostPack -Ucs $handle | Select-Object Name,BladeBundleVersion,RackBundleVersion
-
-    # LDAP Policy Data
-    $DomainHash.Policies.LDAP_Providers = @()
-    $DomainHash.Policies.LDAP_Providers += Get-UcsLdapProvider -Ucs $handle | Select-Object Name,Rootdn,Basedn,Attribute
-    $mappingArray = @()
-    $DomainHash.Policies.LDAP_Mappings = @()
-    $mappingArray += Get-UcsLdapGroupMap -Ucs $handle
-    $mappingArray | ForEach-Object {
-        $mapHash = @{}
-        $mapHash.Name = $_.Name
-        $mapHash.Roles = ($_ | Get-UcsUserRole).Name
-        $mapHash.Locales = ($_ | Get-UcsUserLocale).Name
-        $DomainHash.Policies.LDAP_Mappings += $mapHash
+    $cmd_args = @{
+        handle = $handle
+        MaintenancePolicies = $MaintenancePolicies
     }
+    $DomainHash.Policies = Get-PolicyData @cmd_args
 
-    # Boot Order Policies
-    $DomainHash.Policies.Boot_Policies = @()
-    $AllBootPolicies = Get-UcsBootPolicy -Ucs $handle
-    $DomainHash.Policies.Boot_Policies += Get-ConfiguredBootOrder -BootPolicies $AllBootPolicies
-
-    # End System Policies Collection
-
-    # Start ID Pool Collection
-    # External Mgmt IP Pool
-    $DomainHash.Policies.Mgmt_IP_Pool = @{}
-    # Get the default external management pool
-    $mgmtPool = Get-ucsippoolblock -Ucs $handle -Filter "Dn -cmatch ext-mgmt"
-    $DomainHash.Policies.Mgmt_IP_Pool.From = $mgmtPool.From
-    $DomainHash.Policies.Mgmt_IP_Pool.To = $mgmtPool.To
-    $parentPool = $mgmtPool | get-UcsParent
-    $DomainHash.Policies.Mgmt_IP_Pool.Size = $parentPool.Size
-    $DomainHash.Policies.Mgmt_IP_Pool.Assigned = $parentPool.Assigned
-
-    # Mgmt IP Allocation
-    $DomainHash.Policies.Mgmt_IP_Allocation = @()
-    $parentPool | Get-UcsIpPoolPooled -Filter "Assigned -ieq yes" | Select-Object AssignedToDn,Id,Subnet,DefGw | ForEach-Object {
-        $allocationHash = @{}
-        $allocationHash.Dn = $_.AssignedToDn -replace "/mgmt/*.*", ""
-        $allocationHash.IP = $_.Id
-        $allocationHash.Subnet = $_.Subnet
-        $allocationHash.GW = $_.DefGw
-        $DomainHash.Policies.Mgmt_IP_Allocation += $allocationHash
-    }
-    # UUID
-    $DomainHash.Policies.UUID_Pools = @()
-    $DomainHash.Policies.UUID_Pools += Get-UcsUuidSuffixPool -Ucs $handle | Select-Object Dn,Name,AssignmentOrder,Prefix,Size,Assigned
-    $DomainHash.Policies.UUID_Assignments = @()
-    $DomainHash.Policies.UUID_Assignments += Get-UcsUuidpoolAddr -Ucs $handle -Assigned yes | select-object AssignedToDn,Id | sort-object -property AssignedToDn
-
-    # Server Pools
-    $DomainHash.Policies.Server_Pools = @()
-    $DomainHash.Policies.Server_Pools += Get-UcsServerPool -Ucs $handle | Select-Object Dn,Name,Size,Assigned
-    $DomainHash.Policies.Server_Pool_Assignments = @()
-    $DomainHash.Policies.Server_Pool_Assignments += Get-UcsServerPoolAssignment -Ucs $handle | Select-Object Name,AssignedToDn
-
-    # End ID Pools Collection
+    # End Policy Data and Pools Collection
 
     # Start Service Profile data collection
     # Get Service Profiles by Template
@@ -1546,7 +1575,7 @@ function Invoke-UcsDataGather {
     # Array variable for storing template data
     $templates = @()
     # Grab all service profile templates
-    $templates += ($profiles | Where-Object {$_.Type -match "updating[-]template|initial[-]template"} | Select-Object Dn).Dn
+    $templates += ($profiles | Where-Object {$_.Type -match "(updating|initial)-template"} | Select-Object Dn).Dn
     # Add an empty template entry for profiles not bound to a template
     $templates += ""
     # Iterate through templates and grab configuration data
@@ -1578,7 +1607,11 @@ function Invoke-UcsDataGather {
         $DomainHash.Profiles[$templateId].General.PowerState = ($template | Get-UcsServerPower).State
         $DomainHash.Profiles[$templateId].General.MgmtAccessPolicy = $template.ExtIPState
         $DomainHash.Profiles[$templateId].General.Server_Pool = $template | Get-UcsServerPoolAssignment | Select-Object Name,Qualifier,RestrictMigration
-        if ($templateDn -eq "") {$DomainHash.Profiles[$templateId].General.Maintenance_Policy = ""} else {$DomainHash.Profiles[$templateId].General.Maintenance_Policy = Get-UcsMaintenancePolicy -Ucs $handle -Filter "Dn -ieq $($template.OperMaintPolicyName)" | Select-Object Name,Dn,Descr,UptimeDisr}
+        if ($templateDn -eq "") {
+            $DomainHash.Profiles[$templateId].General.Maintenance_Policy = ""
+        } else {
+            $DomainHash.Profiles[$templateId].General.Maintenance_Policy = $MaintenancePolicies.Where({$_.Dn -eq $Template.OperMaintPolicyName}) | Select-Object Name,Dn,Descr,UptimeDisr
+        }
 
         # Template Details - Storage Tab
 
@@ -1591,7 +1624,11 @@ function Invoke-UcsDataGather {
         $vnicConn = $template | Get-UcsVnicConnDef
         $DomainHash.Profiles[$templateId].Storage.Nwwn = $fcNode.Addr
         $DomainHash.Profiles[$templateId].Storage.Nwwn_Pool = $fcNode.IdentPoolName
-        if ($templateDn -eq "") {$DomainHash.Profiles[$templateId].Storage.Local_Disk_Config = ""} else {$DomainHash.Profiles[$templateId].Storage.Local_Disk_Config = Get-UcsLocalDiskConfigPolicy -Dn $template.OperLocalDiskPolicyName | Select-Object Mode,ProtectConfig,XtraProperty}
+        if ($templateDn -eq "") {
+            $DomainHash.Profiles[$templateId].Storage.Local_Disk_Config = ""
+        } else {
+            $DomainHash.Profiles[$templateId].Storage.Local_Disk_Config = Get-UcsLocalDiskConfigPolicy -Dn $template.OperLocalDiskPolicyName | Select-Object Mode,ProtectConfig,XtraProperty
+        }
         $DomainHash.Profiles[$templateId].Storage.Connectivity_Policy = $vnicConn.SanConnPolicyName
         $DomainHash.Profiles[$templateId].Storage.Connectivity_Instance = $vnicConn.OperSanConnPolicyName
         # Array variable for storing HBA data
@@ -1947,7 +1984,7 @@ function Invoke-UcsDataGather {
 
     # Mac Address Pool Allocations
     $DomainHash.Lan.Mac_Allocations = @()
-    $DomainHash.Lan.Mac_Allocations += Get-UcsMacPoolPooled | Select-Object Id,Assigned,AssignedToDn
+    $DomainHash.Lan.Mac_Allocations += Get-UcsMacPoolPooled -Assigned yes | Select-Object Id,Assigned,AssignedToDn
 
     # Ip Pool Definitions
     $DomainHash.Lan.Ip_Pools = @()
@@ -1962,7 +1999,7 @@ function Invoke-UcsDataGather {
 
     # Ip Pool Allocations
     $DomainHash.Lan.Ip_Allocations = @()
-    $DomainHash.Lan.Ip_Allocations += Get-UcsIpPoolPooled | Select-Object AssignedToDn,DefGw,Id,PrimDns,Subnet,Assigned
+    $DomainHash.Lan.Ip_Allocations += Get-UcsIpPoolPooled -Assigned yes | Select-Object AssignedToDn,DefGw,Id,PrimDns,Subnet,Assigned
 
     # vNic Templates
     $DomainHash.Lan.vNic_Templates = @()
@@ -2117,7 +2154,7 @@ function Invoke-UcsDataGather {
     }
     # WWN Allocations
     $DomainHash.San.Wwn_Allocations = @()
-    $DomainHash.San.Wwn_Allocations += Get-UcsWwnInitiator | Select-Object AssignedToDn,Id,Assigned,Purpose
+    $DomainHash.San.Wwn_Allocations += Get-UcsWwnInitiator -Assigned yes | Select-Object AssignedToDn,Id,Assigned,Purpose
 
     # vHba Templates
     $DomainHash.San.vHba_Templates = Get-UcsVhbaTemplate -Ucs $handle | Select-Object Name,TempType
