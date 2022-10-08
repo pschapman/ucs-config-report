@@ -1497,7 +1497,8 @@ function Get-ServiceProfileStorageData {
     if ($ServiceProfile) {
         $Data.Nwwn = ($VnicFcNode.Where({$_.Dn -match $ServiceProfile.Dn})).Addr
         $Data.Nwwn_Pool = ($VnicFcNode.Where({$_.Dn -match $ServiceProfile.Dn})).IdentPoolName
-        $Data.Local_Disk_Config = Get-UcsLocalDiskConfigPolicy -Dn $ServiceProfile.OperLocalDiskPolicyName | Select-Object Mode,ProtectConfig,XtraProperty
+        $Properties = @("Name","Mode","ProtectConfig","XtraProperty","FlexFlashRAIDReportingState","FlexFlashState")
+        $Data.Local_Disk_Config = Get-UcsLocalDiskConfigPolicy -Dn $ServiceProfile.OperLocalDiskPolicyName | Select-Object $Properties
         $Data.Connectivity_Policy = ($VnicConnDef.Where({$_.Dn -match $ServiceProfile.Dn})).SanConnPolicyName
         $Data.Connectivity_Instance = ($VnicConnDef.Where({$_.Dn -match $ServiceProfile.Dn})).OperSanConnPolicyName
     } else {

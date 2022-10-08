@@ -2645,6 +2645,10 @@
 										<legend>Local Disk Configuration Policy</legend>
 										<table class="table table-condensed SystemTable1">
 											<tr>
+												<th>Name:</th>
+												<td class="template-storage-ldName"></td>
+											</tr>
+											<tr>
 												<th>Mode:</th>
 												<td class="template-storage-ldMode"></td>
 											</tr>
@@ -4216,9 +4220,13 @@
 			$(o).find(".template-storage-nwwnPool").text(e.Storage.Nwwn_Pool),
 			$(o).find(".template-storage-connPolicy").text(e.Storage.Connectivity_Policy),
 			$(o).find(".template-storage-connInstance").text(e.Storage.Connectivity_Instance),
-			$(o).find(".template-storage-ldMode").text(e.Storage.Local_Disk_Config.Mode), $(o).find(".template-storage-ldProtect").text(e.Storage.Local_Disk_Config.ProtectConfig),
-			$(o).find(".template-storage-ldFfState").text(e.Storage.Local_Disk_Config.XtraProperty.FlexFlashState),
-			$(o).find(".template-storage-ldFfReporting").text(e.Storage.Local_Disk_Config.XtraProperty.FlexFlashRAIDReportingState),
+			$(o).find(".template-storage-ldName").text(e.Storage.Local_Disk_Config.Name),
+			$(o).find(".template-storage-ldMode").text(e.Storage.Local_Disk_Config.Mode),
+			$(o).find(".template-storage-ldProtect").text(e.Storage.Local_Disk_Config.ProtectConfig),
+			// $(o).find(".template-storage-ldFfState").text(e.Storage.Local_Disk_Config.XtraProperty.FlexFlashState),
+			// $(o).find(".template-storage-ldFfReporting").text(e.Storage.Local_Disk_Config.XtraProperty.FlexFlashRAIDReportingState),
+			$(o).find(".template-storage-ldFfState").text(e.Storage.Local_Disk_Config.FlexFlashState),
+			$(o).find(".template-storage-ldFfReporting").text(e.Storage.Local_Disk_Config.FlexFlashRAIDReportingState),
 			$("#Template-Details-vHBAs tbody tr").remove(), e.Storage.Hbas.forEach(function(t) {
 				$("#Template-Details-vHBAs tbody").append(
 					"<tr><td>" +
@@ -4357,10 +4365,13 @@
 				$(o).find(".template-storage-nwwnPool").text(e.Storage.Nwwn_Pool),
 				$(o).find(".template-storage-connPolicy").text(e.Storage.Connectivity_Policy),
 				$(o).find(".template-storage-connInstance").text(e.Storage.Connectivity_Instance),
+				$(o).find(".template-storage-ldName").text(e.Storage.Local_Disk_Config.Name),
 				$(o).find(".template-storage-ldMode").text(e.Storage.Local_Disk_Config.Mode),
 				$(o).find(".template-storage-ldProtect").text(e.Storage.Local_Disk_Config.ProtectConfig),
-				$(o).find(".template-storage-ldFfState").text(e.Storage.Local_Disk_Config.XtraProperty.FlexFlashState),
-				$(o).find(".template-storage-ldFfReporting").text(e.Storage.Local_Disk_Config.XtraProperty.FlexFlashRAIDReportingState),
+				// $(o).find(".template-storage-ldFfState").text(e.Storage.Local_Disk_Config.XtraProperty.FlexFlashState),
+				// $(o).find(".template-storage-ldFfReporting").text(e.Storage.Local_Disk_Config.XtraProperty.FlexFlashRAIDReportingState),
+				$(o).find(".template-storage-ldFfState").text(e.Storage.Local_Disk_Config.FlexFlashState),
+				$(o).find(".template-storage-ldFfReporting").text(e.Storage.Local_Disk_Config.FlexFlashRAIDReportingState),
 				$("#Template-Details-vHBAs tbody tr").remove(),
 				e.Storage.Hbas.forEach(function(t) {
 					$("#Template-Details-vHBAs tbody").append(
