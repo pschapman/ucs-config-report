@@ -1004,13 +1004,16 @@ function Get-SystemData {
         Handle (object reference) to target UCS domain
     .PARAMETER $DomainStatus
         Object reference to results of Get-UcsStatus
+    .PARAMETER $Statistics
+        Object reference to Get-UcsStatistics
     .OUTPUTS
         Hashtable
     #>
 
     param (
         [Parameter(Mandatory)]$handle,
-        [Parameter(Mandatory)]$DomainStatus
+        [Parameter(Mandatory)]$DomainStatus,
+        [Parameter(Mandatory)]$Statistics
     )
     $Data = @{}
     $Data.Chassis_Power = @()
@@ -1419,6 +1422,774 @@ function Get-PolicyData {
     return $Data
 }
 
+function Get-ServiceProfileGeneralData {
+    param (
+        $ServiceProfile,
+        [Parameter(Mandatory)]$MaintenancePolicies,
+        [Parameter(Mandatory)]$SPTemplateType,
+        [Parameter(Mandatory)]$SPTemplateName
+    )
+
+    $Data = @{}
+
+    if (!$ServiceProfile) {$ServiceProfile = $dummy | Where-Object {$dummy -eq "''"}}
+
+    if ($ServiceProfile.Type -match "instance") {
+        # Regular Service Profiles
+        $Data.Name = $ServiceProfile.Name
+        $Data.Overall_Status = $ServiceProfile.operState
+        $Data.AssignState = $ServiceProfile.AssignState
+        $Data.AssocState = $ServiceProfile.AssocState
+        $Data.Power_State = ($ServiceProfile | Get-UcsChild -ClassId LsPower | Select-Object State).State
+        $Data.UserLabel = $ServiceProfile.UsrLbl
+        $Data.Descr = $ServiceProfile.Descr
+        $Data.Owner = $ServiceProfile.PolicyOwner
+        $Data.Uuid = $ServiceProfile.Uuid
+        $Data.UuidPool = $ServiceProfile.OperIdentPoolName
+        $Data.Associated_Server = $ServiceProfile.PnDn
+        $Data.Template_Name = $SPTemplateName
+        $Data.Template_Instance = $ServiceProfile.OperSrcTemplName
+
+        $pool = $ServiceProfile | Get-UcsServerPoolAssignment
+        $Data.Assignment = @{}
+        if($pool.Count -gt 0) {
+            $Data.Assignment.Server_Pool = $pool.Name
+            $Data.Assignment.Qualifier = $pool.Qualifier
+            $Data.Assignment.Restrict_Migration = $pool.RestrictMigration
+        } else {
+            $lsServer = $ServiceProfile | Get-UcsLsBinding
+            $Data.Assignment.Server = $lsServer.AssignedToDn
+            $Data.Assignment.Restrict_Migration = $lsServer.RestrictMigration
+        }
+
+    } else {
+        # Service Profile Templates
+        $Data.Name = $SPTemplateName
+        $Data.Type = $SPTemplateType
+        $Data.Description = $ServiceProfile.Descr
+        $Data.UUIDPool = $ServiceProfile.IdentPoolName
+        $Data.Boot_Policy = $ServiceProfile.OperBootPolicyName
+        $Data.PowerState = ($ServiceProfile | Get-UcsServerPower).State
+        $Data.MgmtAccessPolicy = $ServiceProfile.ExtIPState
+        $Data.Server_Pool = $ServiceProfile | Get-UcsServerPoolAssignment | Select-Object Name,Qualifier,RestrictMigration
+
+        if ($ServiceProfile.Type -match "(updating|initial)-template") {
+            $Data.Maintenance_Policy = $MaintenancePolicies.Where({$_.Dn -eq $ServiceProfile.OperMaintPolicyName}) | Select-Object Name,Dn,Descr,UptimeDisr
+        } else {
+        $Data.Maintenance_Policy = ""
+        }
+    }
+
+    return $Data
+}
+
+function Get-ServiceProfileStorageData {
+    param (
+        $ServiceProfile,
+        [Parameter(Mandatory)]$VnicFcNode,
+        [Parameter(Mandatory)]$VnicConnDef
+    )
+
+    $Data = @{}
+
+    if (!$ServiceProfile) {$ServiceProfile = $dummy | Where-Object {$dummy -eq "''"}}
+
+    if ($ServiceProfile) {
+        $Data.Nwwn = ($VnicFcNode.Where({$_.Dn -match $ServiceProfile.Dn})).Addr
+        $Data.Nwwn_Pool = ($VnicFcNode.Where({$_.Dn -match $ServiceProfile.Dn})).IdentPoolName
+        $Data.Local_Disk_Config = Get-UcsLocalDiskConfigPolicy -Dn $ServiceProfile.OperLocalDiskPolicyName | Select-Object Mode,ProtectConfig,XtraProperty
+        $Data.Connectivity_Policy = ($VnicConnDef.Where({$_.Dn -match $ServiceProfile.Dn})).SanConnPolicyName
+        $Data.Connectivity_Instance = ($VnicConnDef.Where({$_.Dn -match $ServiceProfile.Dn})).OperSanConnPolicyName
+    } else {
+        $Data.Nwwn = $null
+        $Data.Nwwn_Pool = $null
+        $Data.Connectivity_Policy = $null
+        $Data.Connectivity_Instance = $null
+        $Data.Local_Disk_Config = ""
+    }
+
+    # Array variable for storing HBA data
+    $Data.Hbas = @()
+
+    $Hbas = $ServiceProfile | Get-UcsVhba -Ucs $handle
+    foreach ($Hba in $Hbas) {
+        $HbaData = @{}
+
+        $HbaData.Name = $Hba.Name
+        $HbaData.FabricId = $Hba.SwitchId
+        $HbaData.Desired_Order = $Hba.Order
+        $HbaData.Actual_Order = $Hba.OperOrder
+        $HbaData.Desired_Placement = $Hba.AdminVcon
+        $HbaData.Actual_Placement = $Hba.OperVcon
+
+        if ($ServiceProfile.Type -eq 'instance') {
+            $HbaData.Pwwn = $Hba.Addr
+            $HbaData.EquipmentDn = $Hba.EquipmentDn
+            $HbaData.Vsan = ($Hba | Get-UcsChild).OperVnetName
+        } else {
+            $HbaData.Pwwn = $Hba.IdentPoolName
+            $HbaData.Vsan = ($Hba | Get-UcsChild).Name
+        }
+        $Data.Hbas += $HbaData
+    }
+
+    return $Data
+}
+
+function Get-ServiceProfileNetworkData {
+    param (
+        $ServiceProfile,
+        [Parameter(Mandatory)]$VnicConnDef
+    )
+
+    $Data = @{}
+
+    if (!$ServiceProfile) {$ServiceProfile = $dummy | Where-Object {$dummy -eq "''"}}
+
+    # Lan Connectivity Policy
+    if ($ServiceProfile) {
+        $Data.Connectivity_Policy = ($VnicConnDef.Where({$_.Dn -match $ServiceProfile.Dn})).LanConnPolicyName
+    } else {
+        $Data.Connectivity_Policy = $null
+    }
+
+    if ($ServiceProfile.Type -ne 'instance') {$Data.DynamicVnic_Policy = $ServiceProfile.DynamicConPolicyName}
+
+    # Array variable for storing
+    $Data.Nics = @()
+
+    # Iterate through each NIC and grab configuration details
+    $Nics = $ServiceProfile | Get-UcsVnic
+    foreach ($Nic in $Nics) {
+        $NicData = @{}
+
+        $NicData.Name = $Nic.Name
+        $NicData.Mac_Address = $Nic.Addr
+        $NicData.Desired_Order = $Nic.Order
+        $NicData.Actual_Order = $Nic.OperOrder
+        $NicData.Fabric_Id = $Nic.SwitchId
+        $NicData.Desired_Placement = $Nic.AdminVcon
+        $NicData.Actual_Placement = $Nic.OperVcon
+        $NicData.Adaptor_Profile = $Nic.AdaptorProfileName
+        $NicData.Control_Policy = $Nic.NwCtrlPolicyName
+        if ($ServiceProfile.Type -eq 'instance') {
+            $NicData.Qos = $Nic.OperQosPolicyName
+            $NicData.Mtu = $Nic.Mtu
+            $NicData.EquipmentDn = $Nic.EquipmentDn
+        }
+
+        # Array for storing VLANs
+        $NicData.Vlans = @()
+
+        # Grab all VLANs
+        # TODO: Call yields nothing when using VLAN groups. Create group drill down. Group class ID is FabricNetGroupRef
+        $NicData.Vlans += $Nic | Get-UcsChild -ClassId VnicEtherIf | Select-Object OperVnetName,Vnet,DefaultNet | Sort-Object {($_.Vnet) -as [int]}
+            # Random thoughts
+            # # Get VLAN from vNIC (standard)
+            # Get-UcsVnic -Dn org-root/ls-SPT-B200M3/ether-vminc4 | Get-UcsChild | ForEach-Object {Get-UcsVlan -Dn $_.OperVnetDn | Select-Object Dn}
+
+            # Get-UcsVnic -Dn <vnic path> | Get-UcsChild | ForEach-Object {Get-UcsFabricNetGroup -Dn $_.OperName}
+            # Get-UcsFabricPooledVlan -Filter "Dn -cmatch <fab net grp path>" | foreach <get-ucsvlan blah>
+        $Data.Nics += $NicData
+    }
+
+    return $Data
+}
+
+function Get-ServiceProfileIscsiData {
+    param (
+        $ServiceProfile
+    )
+
+    $Data = @()
+
+    if (!$ServiceProfile) {$ServiceProfile = $dummy | Where-Object {$dummy -eq "''"}}
+
+    # Iterate through iSCSI interface configuration
+    $Nics = $ServiceProfile | Get-UcsVnicIscsi
+    foreach ($Nic in $Nics) {
+        $NicData = @{}
+
+        $NicData.Name = $Nic.Name
+        $NicData.Overlay = $Nic.VnicName
+        $NicData.Iqn = $Nic.InitiatorName
+        $NicData.Adapter_Policy = $Nic.AdaptorProfileName
+        $NicData.Mac = $Nic.Addr
+        $NicData.Vlan = ($Nic | Get-UcsVnicVlan).VlanName
+
+        $Data += $NicData
+    }
+
+    return $Data
+}
+
+function Get-ServiceProfileBootOrderData {
+}
+
+function Get-ServiceProfilePoliciesData {
+    param (
+        $ServiceProfile
+    )
+
+    $Data = @{}
+    $Data.Bios = $ServiceProfile.BiosProfileName
+    $Data.Fw = $ServiceProfile.HostFwPolicyName
+    $Data.Ipmi = $ServiceProfile.MgmtAccessPolicyName
+    $Data.Power = $ServiceProfile.PowerPolicyName
+    $Data.Scrub = $ServiceProfile.ScrubPolicyName
+    $Data.Sol = $ServiceProfile.SolPolicyName
+    $Data.Stats = $ServiceProfile.StatsPolicyName
+
+    return $Data
+}
+
+function Get-ServiceProfileData {
+    <#
+    .DESCRIPTION
+
+    .PARAMETER $handle
+        Handle (object reference) to target UCS domain
+    .PARAMETER $Statistics
+        Object reference to Get-UcsStatistics
+    .OUTPUTS
+    #>
+
+    param (
+        [Parameter(Mandatory)]$handle,
+        [Parameter(Mandatory)]$Statistics,
+        [Parameter(Mandatory)]$MaintenancePolicies
+    )
+
+    $Data = @{}
+
+    # Node WWN Configuration
+    $VnicFcNode = Get-UcsVnicFcNode
+    # Grab VNIC connectivity
+    $VnicConnDef = Get-UcsVnicConnDef
+
+    # Grab all Service Profiles
+    $AllSPs = Get-ucsServiceProfile -Ucs $handle
+
+    # Array variable for storing template data
+    $SPTemplateDNs = @()
+    # Grab all service profile templates
+    $SPTemplateDNs += ($AllSPs | Where-Object {$_.Type -match "(updating|initial)-template"}).Dn
+    # Add an empty template entry for profiles not bound to a template
+    $SPTemplateDNs += ""
+
+    # Iterate through templates and grab configuration data
+    foreach ($SPTemplateDN in $SPTemplateDNs) {
+        # Get service profile object by DN string
+        $SPTemplate = $AllSPs | Where-Object {$_.Dn -eq "$SPTemplateDN"}
+
+        $SPTemplateName = If ($SPTemplate) {$SPTemplate.Name} Else {"Unbound"}
+
+        # Hash variable to store data for current templateName
+        $SPTemplateData = @{}
+
+        # Switch statement to format the template type
+        switch ($SPTemplate.Type) {
+            "updating-template" {$SPTemplateType = "Updating"}
+            "initial-template" {$SPTemplateType = "Initial"}
+            default {$SPTemplateType = "N/A"}
+        }
+
+        $SPTemplateData.Type = $SPTemplateType
+
+        # Template Details - General Tab
+        # Hash variable for general data
+        $SPTemplateData.General = @{}
+        $cmd_args = @{
+            ServiceProfile = $SPTemplate
+            MaintenancePolicies = $MaintenancePolicies
+            SPTemplateType = $SPTemplateType
+            SPTemplateName = $SPTemplateName
+        }
+        $SPTemplateData.General = Get-ServiceProfileGeneralData @cmd_args
+
+        # Template Details - Policies Tab
+
+        # Hash variable for storing template Policy configuration data
+        $SPTemplateData.Policies = @{}
+        $SPTemplateData.Policies = Get-ServiceProfilePoliciesData -ServiceProfile $SPTemplate
+
+        # Template Details - Storage Tab
+        # Hash variable for storing storage template data
+        $SPTemplateData.Storage = @{}
+        $cmd_args = @{
+            ServiceProfile = $SPTemplate
+            VnicFcNode = $VnicFcNode
+            VnicConnDef = $VnicConnDef
+        }
+        $SPTemplateData.Storage = Get-ServiceProfileStorageData @cmd_args
+
+        # Template Details - Network Tab
+
+        # Hash variable for storing template network configuration
+        $SPTemplateData.Network = @{}
+        $cmd_args = @{
+            ServiceProfile = $SPTemplate
+            VnicConnDef = $VnicConnDef
+        }
+        $SPTemplateData.Network = Get-ServiceProfileNetworkData @cmd_args
+
+        # Template Details - iSCSI vNICs Tab
+
+        # Array variable for storing iSCSI configuration
+        $SPTemplateData.iSCSI = @()
+        $SPTemplateData.iSCSI += Get-ServiceProfileIscsiData -ServiceProfile $SPTemplate
+
+        # Service Profile Instances
+
+        # Array variable for storing profiles tied to current template name
+        $SPTemplateData.Profiles = @()
+
+        # Iterate through all profiles tied to the current template name
+        $AllSPs | Where-Object {$_.OperSrcTemplName -ieq "$SPTemplateDN" -and $_.Type -ieq "instance"} | ForEach-Object {
+            # Store current pipe variable to local variable
+            $sp = $_
+            # Hash variable for storing current profile configuration data
+            $profileHash = @{}
+
+            # Service Profile Details - Top Level Data
+
+            $profileHash.Dn = $sp.Dn
+            $profileHash.Service_Profile = $sp.Name
+            $profileHash.UsrLbl = $sp.UsrLbl
+            $profileHash.Assigned_Server = $sp.PnDn
+            $profileHash.Assoc_State = $sp.AssocState
+            $profileHash.Maint_Policy = $sp.MaintPolicyName
+            $profileHash.Maint_PolicyInstance = $sp.OperMaintPolicyName
+            $profileHash.FW_Policy = $sp.HostFwPolicyName
+            $profileHash.BIOS_Policy = $sp.BiosProfileName
+            $profileHash.Boot_Policy = $sp.OperBootPolicyName
+
+            # Service Profile Details - General Tab
+
+            # Hash variable for storing general profile configuration data
+            $profileHash.General = @{}
+            $cmd_args = @{
+                ServiceProfile = $sp
+                MaintenancePolicies = $MaintenancePolicies
+                SPTemplateType = $SPTemplateType
+                SPTemplateName = $SPTemplateName
+            }
+            $profileHash.General = Get-ServiceProfileGeneralData @cmd_args
+
+            # Service Profile Policies
+            $profileHash.Policies = @{}
+            $profileHash.Policies = Get-ServiceProfilePoliciesData -ServiceProfile $sp
+
+            # Service Profile Details - Storage Tab
+
+            $profileHash.Storage = @{}
+            $cmd_args = @{
+                ServiceProfile = $sp
+                VnicFcNode = $VnicFcNode
+                VnicConnDef = $VnicConnDef
+            }
+            $profileHash.Storage = Get-ServiceProfileStorageData @cmd_args
+
+            # Service Profile Details - Network Tab
+
+            $profileHash.Network = @{}
+            $cmd_args = @{
+                ServiceProfile = $sp
+                VnicConnDef = $VnicConnDef
+            }
+            $profileHash.Network = Get-ServiceProfileNetworkData @cmd_args
+
+            # Service Profile Details - iSCSI vNICs
+
+            $profileHash.iSCSI = @()
+            $profileHash.iSCSI += Get-ServiceProfileIscsiData -ServiceProfile $sp
+
+            # Service Profile Details - Performance
+
+            $profileHash.Performance = @{}
+
+            # Only grab performance data if the profile is associated
+            if($profileHash.Assoc_State -eq 'associated') {
+                # Get the collection time interval for adapter performance
+                $interval = (Get-UcsCollectionPolicy -Name "adapter" | Select-Object CollectionInterval).CollectionInterval
+                # Normalize collection interval to seconds
+                Switch -wildcard (($interval -split '[0-9]')[-1]) {
+                    "minute*" {$profileHash.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int]) * 60}
+                    "second*" {$profileHash.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int])}
+                }
+
+                $cmd_args = @{
+                    UcsStats = $Statistics
+                    RnFilter = "vnic-stats"
+                    StatList = @("BytesRx","BytesRxDeltaAvg","BytesTx","BytesTxDeltaAvg","PacketsRx","PacketsRxDeltaAvg","PacketsTx","PacketsTxDeltaAvg")
+                }
+                # Iterate through each vHBA and grab performance data
+                $profileHash.Performance.vHbas = @{}
+                $profileHash.Storage.Hbas | ForEach-Object {
+                    $profileHash.Performance.vHbas[$_.Name] = Get-DeviceStats @cmd_args -DnFilter $_.EquipmentDn
+                }
+                # Iterate through each vNIC and grab performance data
+                $profileHash.Performance.vNics = @{}
+                $profileHash.Network.Nics | ForEach-Object {
+                    $profileHash.Performance.vNics[$_.Name] = Get-DeviceStats @cmd_args -DnFilter $_.EquipmentDn
+                }
+            }
+
+            # Add current profile to template profile array
+            $SPTemplateData.Profiles += $profileHash
+        }
+
+        $Data[$SPTemplateDN] = $SPTemplateData
+    }
+    return $Data
+}
+
+function Get-LanTabData {
+    <#
+    .DESCRIPTION
+        Extract SAN tab data: FC/FCOE uplinks and FC/FCOE/NAS storage ports
+    .PARAMETER $handle
+        Handle (object reference) to target UCS domain
+    .PARAMETER $UcsFIs
+        List of hashtables containing previously collected FI inventory data (Get-InventoryFIData)
+    .PARAMETER $Statistics
+        Object reference to Get-UcsStatistics
+    .OUTPUTS
+    #>
+
+    param (
+        [Parameter(Mandatory)]$handle,
+        [Parameter(Mandatory)]$UcsFIs,
+        [Parameter(Mandatory)]$Statistics
+    )
+
+    $Data = @{}
+    $Data.UplinkPorts = @()
+    $Data.ServerPorts = @()
+
+    # Iterate through each FI and collect port performance data based on port role
+    foreach ($UcsFI in $UcsFIs) {
+        # Uplink and Server Ports
+        $Ports = $UcsFI.Ports
+        foreach ($Port in $Ports) {
+            $PortData = @{}
+            $PortData.Dn = $Port.Dn
+            $PortData.PortId = $Port.PortId
+            $PortData.SlotId = $Port.SlotId
+            $PortData.Fabric_Id = $Port.SwitchId
+            $PortData.Mac = $Port.Mac
+            $PortData.Speed = $Port.OperSpeed
+            $PortData.IfType = $Port.IfType
+            $PortData.IfRole = $Port.IfRole
+            $PortData.XcvrType = $Port.XcvrType
+            $PortData.Performance = @{}
+            $cmd_args = @{
+                UcsStats = $Statistics
+                DnFilter = "$($port.Dn)/.*stats"
+                StatList = @("TotalBytes","TotalPackets","TotalBytesDeltaAvg")
+            }
+            $PortData.Performance.Rx = Get-DeviceStats @cmd_args -RnFilter "rx[-]stats"
+            $PortData.Performance.Tx = Get-DeviceStats @cmd_args -RnFilter "tx[-]stats"
+            $PortData.Status = $Port.OperState
+            $PortData.State = $Port.AdminState
+
+            # Store uplinks separately from server ports
+            if ($Port.IfRole -cmatch "network") {
+                $Data.UplinkPorts += $PortData
+            } elseif ($Port.IfRole -cmatch "server") {
+                $Data.ServerPorts += $PortData
+            }
+        }
+    }
+
+    # Fabric PortChannels
+    $Data.FabricPcs = @()
+    $PortChannels = Get-UcsFabricServerPortChannel -Ucs $handle
+    foreach ($PortChannel in $PortChannels) {
+    # Get-UcsFabricServerPortChannel -Ucs $handle | ForEach-Object {
+        $PortChannelData = @{}
+        $PortChannelData.Name = $PortChannel.Rn
+        $PortChannelData.Chassis = $PortChannel.ChassisId
+        $PortChannelData.Fabric_Id = $PortChannel.SwitchId
+        $PortChannelData.Members = $PortChannel | Get-UcsFabricServerPortChannelMember | Select-Object EpDn,PeerDn
+        $Data.FabricPcs += $PortChannelData
+    }
+
+    # Uplink PortChannels
+    $Data.UplinkPcs = @()
+    $PortChannels = Get-UcsUplinkPortChannel -Ucs $handle
+    foreach ($PortChannel in $PortChannels) {
+    # Get-UcsUplinkPortChannel -Ucs $handle | ForEach-Object {
+        $PortChannelData = @{}
+        $PortChannelData.Name = $PortChannel.Rn
+        $PortChannelData.Fabric_Id = $PortChannel.SwitchId
+        $PortChannelData.Members = $PortChannel | Get-UcsUplinkPortChannelMember | Select-Object EpDn,PeerDn
+        $Data.UplinkPcs += $PortChannelData
+    }
+
+    # Qos Domain Policies
+    $Data.Qos = @{}
+    $Data.Qos.Domain = @()
+    $Data.Qos.Domain += Get-UcsQosClass -Ucs $handle | Sort-Object Cos -Descending
+    $Data.Qos.Domain += Get-UcsBestEffortQosClass -Ucs $handle
+    $Data.Qos.Domain += Get-UcsFcQosClass -Ucs $handle
+
+    # Qos Policies
+    $Data.Qos.Policies = @()
+    $Policies = Get-UcsQosPolicy -Ucs $handle
+    foreach ($Policy in $Policies) {
+    # Get-UcsQosPolicy -Ucs $handle | ForEach-Object {
+        $PolicyData = @{}
+        $PolicyData.Name = $Policy.Name
+        $PolicyData.Owner = $Policy.PolicyOwner
+
+        $PolicyDetail = $Policy | Get-UcsChild -ClassId EpqosEgress
+        $PolicyData.Burst = $PolicyDetail.Burst
+        $PolicyData.HostControl = $PolicyDetail.HostControl
+        $PolicyData.Prio = $PolicyDetail.Prio
+        $PolicyData.Rate = $PolicyDetail.Rate
+
+        $Data.Qos.Policies += $PolicyData
+    }
+
+    # VLANs
+    $Data.Vlans = @()
+    $Data.Vlans += Get-UcsVlan -Ucs $handle | Where-Object {$_.IfRole -eq "network"} | Sort-Object -Property Ucs,Id
+
+    # Network Control Policies
+    $Data.Control_Policies = @()
+    $Data.Control_Policies += Get-UcsNetworkControlPolicy -Ucs $handle | Where-Object Dn -ne "fabric/eth-estc/nwctrl-default" | Select-Object Cdp,MacRegisterMode,Name,UplinkFailAction,Descr,Dn,PolicyOwner
+
+    # Mac Address Pool Definitions
+    $Data.Mac_Pools = @()
+    $Pools = Get-UcsMacPool -Ucs $handle
+    foreach ($Pool in $Pools) {
+    # Get-UcsMacPool -Ucs $handle | ForEach-Object {
+        $PoolData = @{}
+        $PoolData.Name = $Pool.Name
+        $PoolData.Assigned = $Pool.Assigned
+        $PoolData.Size = $Pool.Size
+        $MemberBlocks = $Pool | Get-UcsMacMemberBlock -Ucs $handle
+        foreach ($MemberBlock in $MemberBlocks) {
+            $PoolData.From += $MemberBlock.From
+            $PoolData.To += $MemberBlock.To
+        }
+        # ($PoolData.From,$PoolData.To) = $Pool | Get-UcsMacMemberBlock | Select-Object From,To | ForEach-Object {$_.From,$_.To}
+        $Data.Mac_Pools += $PoolData
+    }
+
+    # Mac Address Pool Allocations
+    $Data.Mac_Allocations = @()
+    $Data.Mac_Allocations += Get-UcsMacPoolPooled -Assigned yes | Select-Object Id,Assigned,AssignedToDn
+
+    # Ip Pool Definitions
+    $Data.Ip_Pools = @()
+    $Pools = Get-UcsIpPool -Ucs $handle
+    foreach ($Pool in $Pools) {
+    # Get-UcsIpPool -Ucs $handle | ForEach-Object {
+        $PoolData = @{}
+        $PoolData.Name = $Pool.Name
+        $PoolData.Assigned = $Pool.Assigned
+        $PoolData.Size = $Pool.Size
+
+        $PoolDetail = $Pool | Get-UcsIpPoolBlock
+        $PoolData.From = $PoolDetail.From
+        $PoolData.To = $PoolDetail.To
+        $PoolData.DefGw = $PoolDetail.DefGw
+        $PoolData.Subnet = $PoolDetail.Subnet
+        $PoolData.PrimDns = $PoolDetail.PrimDns
+
+        $Data.Ip_Pools += $PoolData
+    }
+
+    # Ip Pool Allocations
+    $Data.Ip_Allocations = @()
+    $Data.Ip_Allocations += Get-UcsIpPoolPooled -Assigned yes | Select-Object AssignedToDn,DefGw,Id,PrimDns,Subnet,Assigned
+
+    # vNic Templates
+    $Data.vNic_Templates = @()
+    $Data.vNic_Templates += Get-UcsVnicTemplate -Ucs $handle | Select-Object Ucs,Dn,Name,Descr,SwitchId,TemplType,IdentPoolName,Mtu,NwCtrlPolicyName,QosPolicyName
+
+    return $Data
+}
+
+function Get-SanTabData {
+    <#
+    .DESCRIPTION
+        Extract SAN tab data: FC/FCOE uplinks and FC/FCOE/NAS storage ports
+    .PARAMETER $handle
+        Handle (object reference) to target UCS domain
+    .PARAMETER $UcsFIs
+        List of hashtables containing previously collected FI inventory data (Get-InventoryFIData)
+    .PARAMETER $Statistics
+        Object reference to Get-UcsStatistics
+    .OUTPUTS
+    #>
+
+    param (
+        [Parameter(Mandatory)]$handle,
+        [Parameter(Mandatory)]$UcsFIs,
+        [Parameter(Mandatory)]$Statistics
+    )
+
+    $Data = @{}
+    $Data.UplinkFcoePorts = @()
+    $Data.UplinkFcPorts = @()
+    $Data.StorageFcPorts = @()
+    $Data.StoragePorts = @()
+
+    # Iterate through each FI and grab san performance data based on port role
+    foreach ($UcsFI in $UcsFis) {
+        # Ethernet NAS, FCOE storage, or FCOE uplink ports
+        $Ports = $UcsFI.Ports
+        foreach ($Port in $Ports) {
+            $PortData = @{}
+
+            $PortData.Dn = $Port.Dn
+            $PortData.PortId = $Port.PortId
+            $PortData.SlotId = $Port.SlotId
+            $PortData.Fabric_Id = $Port.SwitchId
+            $PortData.Mac = $Port.Mac
+            $PortData.Speed = $Port.OperSpeed
+            $PortData.IfType = $Port.IfType
+            $PortData.IfRole = $Port.IfRole
+            $PortData.XcvrType = $Port.XcvrType
+            $PortData.Performance = @{}
+            $cmd_args = @{
+                UcsStats = $Statistics
+                DnFilter = "$($port.Dn)/.*stats"
+                StatList = @("TotalBytes","TotalPackets","TotalBytesDeltaAvg")
+            }
+            $PortData.Performance.Rx = Get-DeviceStats @cmd_args -RnFilter "rx[-]stats"
+            $PortData.Performance.Tx = Get-DeviceStats @cmd_args -RnFilter "tx[-]stats"
+            $PortData.Status = $Port.OperState
+            $PortData.State = $Port.AdminState
+
+            # Store uplinks separately from direct storage ports
+            if ($Port.IfRole -cmatch "fc.*uplink") {
+                $Data.UplinkFcoePorts += $PortData
+            } elseif ($Port.IfRole -cmatch "storage") {
+                $Data.StoragePorts += $PortData
+            }
+        }
+
+        # FC Uplink and Storage Ports
+        $Ports = $UcsFI.FcUplinkPorts
+        foreach ($Port in $Ports) {
+            $PortData = @{}
+            $PortData.Dn = $Port.Dn
+            $PortData.PortId = $Port.PortId
+            $PortData.SlotId = $Port.SlotId
+            $PortData.Fabric_Id = $Port.SwitchId
+            $PortData.Wwn = $Port.Wwn
+            $PortData.IfRole = $Port.IfRole
+            $PortData.Speed = $Port.OperSpeed
+            $PortData.Mode = $Port.Mode
+            $PortData.XcvrType = $Port.XcvrType
+            $PortData.Performance = @{}
+            $cmd_args = @{
+                UcsStats = $Statistics
+                DnFilter = "$($port.Dn)/stats"
+                RnFilter = "stats"
+                StatList = @("BytesRx","PacketsRx","BytesRxDeltaAvg","BytesTx","PacketsTx","BytesTxDeltaAvg")
+            }
+            $stats = Get-DeviceStats @cmd_args
+            $PortData.Performance.Rx = $stats | Select-Object BytesRx,PacketsRx,BytesRxDeltaAvg
+            $PortData.Performance.Tx = $stats | Select-Object BytesTx,PacketsTx,BytesTxDeltaAvg
+            $PortData.Status = $Port.OperState
+            $PortData.State = $Port.AdminState
+
+            # Store uplinks separately from direct storage ports
+            if ($Port.IfRole -cmatch "network") {
+                $Data.UplinkFcPorts += $PortData
+            } elseif ($Port.IfRole -cmatch "storage") {
+                $Data.StorageFcPorts += $PortData
+            }
+        }
+    }
+
+    # SAN PortChannel Uplinks
+    $Data.UplinkPcs = @()
+    $PortChannels = Get-UcsFcUplinkPortChannel -Ucs $handle
+    foreach ($PortChannel in $PortChannels) {
+        $PortChannelData = @{}
+        $PortChannelData.Name = $PortChannel.Rn
+        $PortChannelData.Members = $PortChannel | Get-UcsFabricFcSanPcEp | Select-Object EpDn,PeerDn
+        $Data.UplinkPcs += $PortChannelData
+    }
+
+    # FCoE PortChannel Uplinks
+    $Data.FcoePcs = @()
+    $PortChannels = Get-UcsFabricFcoeSanPc -Ucs $handle
+    foreach ($PortChannel in $PortChannels) {
+        $PortChannelData = @{}
+        $PortChannelData.Name = $PortChannel.Rn
+        $PortChannelData.Members = $PortChannel | Get-UcsFabricFcoeSanPcEp | Select-Object EpDn
+        $Data.FcoePcs += $PortChannelData
+    }
+
+    # VSANs
+    $Data.Vsans = @()
+    $Data.Vsans += Get-UcsVsan -Ucs $handle | Select-Object FcoeVlan,Id,name,SwitchId,ZoningState,IfRole,IfType,Transport
+
+    # WWN Pools
+    $Data.Wwn_Pools = @()
+    $Pools = Get-UcsWwnPool -Ucs $handle
+    foreach ($Pool in $Pools) {
+        $PoolData = @{}
+        $PoolData.Name = $Pool.Name
+        $PoolData.Assigned = $Pool.Assigned
+        $PoolData.Size = $Pool.Size
+        $PoolData.Purpose = $Pool.Purpose
+        $PoolData.From = @()
+        $PoolData.To = @()
+        $MemberBlocks = $Pool | Get-UcsWwnMemberBlock -Ucs $handle
+        foreach ($MemberBlock in $MemberBlocks) {
+            $PoolData.From += $MemberBlock.From
+            $PoolData.To += $MemberBlock.To
+        }
+        $Data.Wwn_Pools += $PoolData
+    }
+    # WWN Allocations
+    $Data.Wwn_Allocations = @()
+    $Data.Wwn_Allocations += Get-UcsWwnInitiator -Assigned yes | Select-Object AssignedToDn,Id,Assigned,Purpose
+
+    # vHba Templates
+    $Data.vHba_Templates = Get-UcsVhbaTemplate -Ucs $handle | Select-Object Name,TempType
+
+    return $Data
+}
+
+function Get-FaultData {
+    <#
+    .DESCRIPTION
+        Extract faults data
+    .PARAMETER $handle
+        Handle (object reference) to target UCS domain
+    .OUTPUTS
+    #>
+
+    param (
+        [Parameter(Mandatory)]$handle
+    )
+
+    $Data = @()
+
+    $Faults = Get-UcsFault -Ucs $handle -Filter 'Severity -cmatch "critical|major|minor|warning"' | Sort-Object -Property Severity
+
+    # Iterate through each fault and grab information
+    foreach ($Fault in $Faults) {
+        $FaultData = @{}
+
+        $FaultData.Severity = $Fault.Severity
+        $FaultData.Descr = $Fault.Descr
+        $FaultData.Dn = $Fault.Dn
+        $FaultData.Date = $Fault.Created
+        $Data += $FaultData
+    }
+    return $Data
+}
+
 function Invoke-UcsDataGather {
     param (
         [Parameter(Mandatory)]$domain,
@@ -1452,6 +2223,9 @@ function Invoke-UcsDataGather {
     $DomainHash = @{}
     $DomainHash.System = @{}
     $DomainHash.Inventory = @{}
+    $DomainHash.Inventory.FIs = @()
+    $DomainHash.Inventory.Chassis = @()
+    $DomainHash.Inventory.IOMs = @()
     $DomainHash.Inventory.Blades = @()
     $DomainHash.Inventory.Rackmounts = @()
     $DomainHash.Policies = @{}
@@ -1468,10 +2242,12 @@ function Invoke-UcsDataGather {
     #===================================#
     #    Start System Data Collection    #
     #===================================#
+    # Set Job Progress
     $Process_Hash.Progress[$domain] = 1
     $cmd_args = @{
         handle = $handle
         DomainStatus = $DomainStatus
+        Statistics = $Statistics
     }
     $DomainHash.System = Get-SystemData @cmd_args
 
@@ -1483,7 +2259,7 @@ function Invoke-UcsDataGather {
 
     # Set Job Progress
     $Process_Hash.Progress[$domain] = 12
-    $DomainHash.Inventory.FIs = @()
+
     $cmd_args = @{
         handle = $handle
         DomainStatus = $DomainStatus
@@ -1498,8 +2274,9 @@ function Invoke-UcsDataGather {
     # Start Chassis Inventory Collection
 
     # Set Job Progress
-    # Initialize array variable for storing Chassis data
-    $DomainHash.Inventory.Chassis = @()
+    # $Process_Hash.Progress[$domain] =
+    Write-Host "`t??% | $(Get-ElapsedTime -FirstTimestamp $start) | Chassis Data"
+
     $cmd_args = @{
         handle = $handle
         EquipPhysicalDef = $EquipPhysicalDef
@@ -1510,11 +2287,9 @@ function Invoke-UcsDataGather {
 
     # Start IOM Inventory Collection
 
-    # Increment job progress
+    # Set Job Progress
     $Process_Hash.Progress[$domain] = 24
 
-    # Initialize array for storing IOM inventory data
-    $DomainHash.Inventory.IOMs = @()
     $cmd_args = @{
         handle = $handle
         EquipManufactDef = $EquipManufactDef
@@ -1541,23 +2316,25 @@ function Invoke-UcsDataGather {
     }
 
     # Start Blade Inventory Collection
-    # Set progress of current job
+    # Set Job Progress
     $Process_Hash.Progress[$domain] = 36
     $DomainHash.Inventory.Blades += Get-InventoryServerData @cmd_args -IsBlade
 
     # Start Rack Inventory Collection
-    # Set progress of current job
+    # Set Job Progress
     $Process_Hash.Progress[$domain] = 48
+
     $DomainHash.Inventory.Rackmounts += Get-InventoryServerData @cmd_args
 
     # End Server Inventory Collection
 
     # Start Policy Data and Pools Collection
 
-    # Update job progress percent
+    # Set Job Progress
     $Process_Hash.Progress[$domain] = 60
-    # Hash variable for storing system policies
-    $DomainHash.Policies.SystemPolicies = @{}
+    # # Hash variable for storing system policies
+    # $DomainHash.Policies.SystemPolicies = @{}
+
     $cmd_args = @{
         handle = $handle
         MaintenancePolicies = $MaintenancePolicies
@@ -1571,616 +2348,62 @@ function Invoke-UcsDataGather {
 
     # Update current job progress
     $Process_Hash.Progress[$domain] = 72
-    # Grab all Service Profiles
-    $profiles = Get-ucsServiceProfile -Ucs $handle
-
-    # Array variable for storing template data
-    $templates = @()
-    # Grab all service profile templates
-    $templates += ($profiles | Where-Object {$_.Type -match "(updating|initial)-template"} | Select-Object Dn).Dn
-    # Add an empty template entry for profiles not bound to a template
-    $templates += ""
-    # Iterate through templates and grab configuration data
-    $templates | ForEach-Object {
-        # Grab the current template name
-        $templateDn = $_
-        $templateId = $templateDn #-replace "/",":"
-        # Unchanged copy of the current template name used later in the script
-        # Find the profile template that matches the current name
-        $template = $profiles | Where-Object {$_.Dn -eq "$templateDn"}
-        $templateName = If ($template) {$template.Name} Else {"Unbound"}
-        # Hash variable to store data for current templateName
-        $DomainHash.Profiles[$templateId] = @{}
-        # Switch statement to format the template type
-        switch ($template.Type) {
-                "updating-template"    {$DomainHash.Profiles[$templateId].Type = "Updating"}
-                "initial-template"    {$DomainHash.Profiles[$templateId].Type = "Initial"}
-                default {$DomainHash.Profiles[$templateId].Type = "N/A"}
-        }
-        # Template Details - General Tab
-
-        # Hash variable for storing general template data
-        $DomainHash.Profiles[$templateId].General = @{}
-        $DomainHash.Profiles[$templateId].General.Name = $templateName
-        $DomainHash.Profiles[$templateId].General.Type = $DomainHash.Profiles[$templateId].Type
-        $DomainHash.Profiles[$templateId].General.Description = $template.Descr
-        $DomainHash.Profiles[$templateId].General.UUIDPool = $template.IdentPoolName
-        $DomainHash.Profiles[$templateId].General.Boot_Policy = $template.OperBootPolicyName
-        $DomainHash.Profiles[$templateId].General.PowerState = ($template | Get-UcsServerPower).State
-        $DomainHash.Profiles[$templateId].General.MgmtAccessPolicy = $template.ExtIPState
-        $DomainHash.Profiles[$templateId].General.Server_Pool = $template | Get-UcsServerPoolAssignment | Select-Object Name,Qualifier,RestrictMigration
-        if ($templateDn -eq "") {
-            $DomainHash.Profiles[$templateId].General.Maintenance_Policy = ""
-        } else {
-            $DomainHash.Profiles[$templateId].General.Maintenance_Policy = $MaintenancePolicies.Where({$_.Dn -eq $Template.OperMaintPolicyName}) | Select-Object Name,Dn,Descr,UptimeDisr
-        }
-
-        # Template Details - Storage Tab
-
-        # Hash variable for storing storage template data
-        $DomainHash.Profiles[$templateId].Storage = @{}
-
-        # Node WWN Configuration
-        $fcNode = $template | Get-UcsVnicFcNode
-        # Grab VNIC connectivity
-        $vnicConn = $template | Get-UcsVnicConnDef
-        $DomainHash.Profiles[$templateId].Storage.Nwwn = $fcNode.Addr
-        $DomainHash.Profiles[$templateId].Storage.Nwwn_Pool = $fcNode.IdentPoolName
-        if ($templateDn -eq "") {
-            $DomainHash.Profiles[$templateId].Storage.Local_Disk_Config = ""
-        } else {
-            $DomainHash.Profiles[$templateId].Storage.Local_Disk_Config = Get-UcsLocalDiskConfigPolicy -Dn $template.OperLocalDiskPolicyName | Select-Object Mode,ProtectConfig,XtraProperty
-        }
-        $DomainHash.Profiles[$templateId].Storage.Connectivity_Policy = $vnicConn.SanConnPolicyName
-        $DomainHash.Profiles[$templateId].Storage.Connectivity_Instance = $vnicConn.OperSanConnPolicyName
-        # Array variable for storing HBA data
-        $DomainHash.Profiles[$templateId].Storage.Hbas = @()
-        $template | Get-UcsVhba | ForEach-Object {
-            $hbaHash = @{}
-            $hbaHash.Name = $_.Name
-            $hbaHash.Pwwn = $_.IdentPoolName
-            $hbaHash.FabricId = $_.SwitchId
-            $hbaHash.Desired_Order = $_.Order
-            $hbaHash.Actual_Order = $_.OperOrder
-            $hbaHash.Desired_Placement = $_.AdminVcon
-            $hbaHash.Actual_Placement = $_.OperVcon
-            $hbaHash.Vsan = ($_ | Get-UcsChild | Select-Object Name).Name
-            $DomainHash.Profiles[$templateId].Storage.Hbas += $hbaHash
-        }
-
-        # Template Details - Network Tab
-
-        # Hash variable for storing template network configuration
-        $DomainHash.Profiles[$templateId].Network = @{}
-        # Lan Connectivity Policy
-        $DomainHash.Profiles[$templateId].Network.Connectivity_Policy = $vnicConn.LanConnPolicyName
-        $DomainHash.Profiles[$templateId].Network.DynamicVnic_Policy = $template.DynamicConPolicyName
-        # Array variable for storing
-        $DomainHash.Profiles[$templateId].Network.Nics = @()
-        # Iterate through each NIC and grab configuration details
-        $template | Get-UcsVnic | ForEach-Object {
-            $nicHash = @{}
-            $nicHash.Name = $_.Name
-            $nicHash.Mac_Address = $_.Addr
-            $nicHash.Desired_Order = $_.Order
-            $nicHash.Actual_Order = $_.OperOrder
-            $nicHash.Fabric_Id = $_.SwitchId
-            $nicHash.Desired_Placement = $_.AdminVcon
-            $nicHash.Actual_Placement = $_.OperVcon
-            $nicHash.Adaptor_Profile = $_.AdaptorProfileName
-            $nicHash.Control_Policy = $_.NwCtrlPolicyName
-            # Array for storing VLANs
-            $nicHash.Vlans = @()
-            # Grab all VLANs
-            $nicHash.Vlans += $_ | Get-UcsChild -ClassId VnicEtherIf | Select-Object OperVnetName,Vnet,DefaultNet | Sort-Object {($_.Vnet) -as [int]}
-            $DomainHash.Profiles[$templateId].Network.Nics += $nicHash
-        }
-
-        # Template Details - iSCSI vNICs Tab
-
-        # Array variable for storing iSCSI configuration
-        $DomainHash.Profiles[$templateId].iSCSI = @()
-        # Iterate through iSCSI interface configuration
-        $template | Get-UcsVnicIscsi | ForEach-Object {
-            $iscsiHash = @{}
-            $iscsiHash.Name = $_.Name
-            $iscsiHash.Overlay = $_.VnicName
-            $iscsiHash.Iqn = $_.InitiatorName
-            $iscsiHash.Adapter_Policy = $_.AdaptorProfileName
-            $iscsiHash.Mac = $_.Addr
-            $iscsiHash.Vlan = ($_ | Get-UcsVnicVlan).VlanName
-            $DomainHash.Profiles[$templateId].iSCSI += $iscsiHash
-        }
-
-        # Template Details - Policies Tab
-
-        # Hash variable for storing template Policy configuration data
-        $DomainHash.Profiles[$templateId].Policies = @{}
-        $DomainHash.Profiles[$templateId].Policies.Bios = $template.BiosProfileName
-        $DomainHash.Profiles[$templateId].Policies.Fw = $template.HostFwPolicyName
-        $DomainHash.Profiles[$templateId].Policies.Ipmi = $template.MgmtAccessPolicyName
-        $DomainHash.Profiles[$templateId].Policies.Power = $template.PowerPolicyName
-        $DomainHash.Profiles[$templateId].Policies.Scrub = $template.ScrubPolicyName
-        $DomainHash.Profiles[$templateId].Policies.Sol = $template.SolPolicyName
-        $DomainHash.Profiles[$templateId].Policies.Stats = $template.StatsPolicyName
-
-        # Service Profile Instances
-
-        # Array variable for storing profiles tied to current template name
-        $DomainHash.Profiles[$templateId].Profiles = @()
-        # Iterate through all profiles tied to the current template name
-        $profiles | Where-Object {$_.OperSrcTemplName -ieq "$templateDn" -and $_.Type -ieq "instance"} | ForEach-Object {
-            # Store current pipe variable to local variable
-            $sp = $_
-            # Hash variable for storing current profile configuration data
-            $profileHash = @{}
-            $profileHash.Dn = $sp.Dn
-            $profileHash.Service_Profile = $sp.Name
-            $profileHash.UsrLbl = $sp.UsrLbl
-            $profileHash.Assigned_Server = $sp.PnDn
-            $profileHash.Assoc_State = $sp.AssocState
-            $profileHash.Maint_Policy = $sp.MaintPolicyName
-            $profileHash.Maint_PolicyInstance = $sp.OperMaintPolicyName
-            $profileHash.FW_Policy = $sp.HostFwPolicyName
-            $profileHash.BIOS_Policy = $sp.BiosProfileName
-            $profileHash.Boot_Policy = $sp.OperBootPolicyName
-
-            # Service Profile Details - General Tab
-
-            # Hash variable for storing general profile configuration data
-            $profileHash.General = @{}
-            $profileHash.General.Name = $sp.Name
-            $profileHash.General.Overall_Status = $sp.operState
-            $profileHash.General.AssignState = $sp.AssignState
-            $profileHash.General.AssocState = $sp.AssocState
-            $profileHash.General.Power_State = ($sp | Get-UcsChild -ClassId LsPower | Select-Object State).State
-
-            $profileHash.General.UserLabel = $sp.UsrLbl
-            $profileHash.General.Descr = $sp.Descr
-            $profileHash.General.Owner = $sp.PolicyOwner
-            $profileHash.General.Uuid = $sp.Uuid
-            $profileHash.General.UuidPool = $sp.OperIdentPoolName
-            $profileHash.General.Associated_Server = $sp.PnDn
-            $profileHash.General.Template_Name = $templateName
-            $profileHash.General.Template_Instance = $sp.OperSrcTemplName
-            $profileHash.General.Assignment = @{}
-            $pool = $sp | Get-UcsServerPoolAssignment
-            if($pool.Count -gt 0) {
-                $profileHash.General.Assignment.Server_Pool = $pool.Name
-                $profileHash.General.Assignment.Qualifier = $pool.Qualifier
-                $profileHash.General.Assignment.Restrict_Migration = $pool.RestrictMigration
-            } else {
-                $lsServer = $sp | Get-UcsLsBinding
-                $profileHash.General.Assignment.Server = $lsServer.AssignedToDn
-                $profileHash.General.Assignment.Restrict_Migration = $lsServer.RestrictMigration
-            }
-
-            # Service Profile Details - Storage Tab
-            $profileHash.Storage = @{}
-            $fcNode = $sp | Get-UcsVnicFcNode
-            $vnicConn = $sp | Get-UcsVnicConnDef
-            $profileHash.Storage.Nwwn = $fcNode.Addr
-            $profileHash.Storage.Nwwn_Pool = $fcNode.IdentPoolName
-            $profileHash.Storage.Local_Disk_Config = Get-UcsLocalDiskConfigPolicy -Dn $sp.OperLocalDiskPolicyName | Select-Object Mode,ProtectConfig,XtraProperty
-            $profileHash.Storage.Connectivity_Policy = $vnicConn.SanConnPolicyName
-            $profileHash.Storage.Connectivity_Instance = $vnicConn.OperSanConnPolicyName
-            # Array variable for storing HBA configuration data
-            $profileHash.Storage.Hbas = @()
-            # Iterate through each HBA interface
-            $sp | Get-UcsVhba | Sort-Object OperVcon,OperOrder | ForEach-Object {
-                $hbaHash = @{}
-                $hbaHash.Name = $_.Name
-                $hbaHash.Pwwn = $_.Addr
-                $hbaHash.FabricId = $_.SwitchId
-                $hbaHash.Desired_Order = $_.Order
-                $hbaHash.Actual_Order = $_.OperOrder
-                $hbaHash.Desired_Placement = $_.AdminVcon
-                $hbaHash.Actual_Placement = $_.OperVcon
-                $hbaHash.EquipmentDn = $_.EquipmentDn
-                $hbaHash.Vsan = ($_ | Get-UcsChild | Select-Object OperVnetName).OperVnetName
-                $profileHash.Storage.Hbas += $hbaHash
-            }
-
-            # Service Profile Details - Network Tab
-            $profileHash.Network = @{}
-            $profileHash.Network.Connectivity_Policy = $vnicConn.LanConnPolicyName
-            # Array variable for storing NIC configuration data
-            $profileHash.Network.Nics = @()
-            # Iterate through each vNIC and grab configuration data
-            $sp | Get-UcsVnic | ForEach-Object {
-                $nicHash = @{}
-                $nicHash.Name = $_.Name
-                $nicHash.Mac_Address = $_.Addr
-                $nicHash.Desired_Order = $_.Order
-                $nicHash.Actual_Order = $_.OperOrder
-                $nicHash.Fabric_Id = $_.SwitchId
-                $nicHash.Desired_Placement = $_.AdminVcon
-                $nicHash.Actual_Placement = $_.OperVcon
-                $nicHash.Mtu = $_.Mtu
-                $nicHash.EquipmentDn = $_.EquipmentDn
-                $nicHash.Adaptor_Profile = $_.AdaptorProfileName
-                $nicHash.Control_Policy = $_.NwCtrlPolicyName
-                $nicHash.Qos = $_.OperQosPolicyName
-                $nicHash.Vlans = @()
-                $nicHash.Vlans += $_ | Get-UcsChild -ClassId VnicEtherIf | Select-Object OperVnetName,Vnet,DefaultNet | Sort-Object {($_.Vnet) -as [int]}
-                $profileHash.Network.Nics += $nicHash
-            }
-
-            # Service Profile Details - iSCSI vNICs
-            $profileHash.iSCSI = @()
-            # Iterate through all iSCSI interfaces and grab configuration data
-            $sp | Get-UcsVnicIscsi | ForEach-Object {
-                $iscsiHash = @{}
-                $iscsiHash.Name = $_.Name
-                $iscsiHash.Overlay = $_.VnicName
-                $iscsiHash.Iqn = $_.InitiatorName
-                $iscsiHash.Adapter_Policy = $_.AdaptorProfileName
-                $iscsiHash.Mac = $_.Addr
-                $iscsiHash.Vlan = ($_ | Get-UcsVnicVlan).VlanName
-                $profileHash.iSCSI += $iscsiHash
-            }
-
-            # Service Profile Details - Performance
-            $profileHash.Performance = @{}
-            # Only grab performance data if the profile is associated
-            if($profileHash.Assoc_State -eq 'associated') {
-                # Get the collection time interval for adapter performance
-                $interval = (Get-UcsCollectionPolicy -Name "adapter" | Select-Object CollectionInterval).CollectionInterval
-                # Normalize collection interval to seconds
-                Switch -wildcard (($interval -split '[0-9]')[-1]) {
-                    "minute*" {$profileHash.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int]) * 60}
-                    "second*" {$profileHash.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int])}
-                }
-
-                $cmd_args = @{
-                    UcsStats = $statistics
-                    RnFilter = "vnic-stats"
-                    StatList = @("BytesRx","BytesRxDeltaAvg","BytesTx","BytesTxDeltaAvg","PacketsRx","PacketsRxDeltaAvg","PacketsTx","PacketsTxDeltaAvg")
-                }
-                # Iterate through each vHBA and grab performance data
-                $profileHash.Performance.vHbas = @{}
-                $profileHash.Storage.Hbas | ForEach-Object {
-                    $profileHash.Performance.vHbas[$_.Name] = Get-DeviceStats @cmd_args -DnFilter $_.EquipmentDn
-                }
-                # Iterate through each vNIC and grab performance data
-                $profileHash.Performance.vNics = @{}
-                $profileHash.Network.Nics | ForEach-Object {
-                    $profileHash.Performance.vNics[$_.Name] = Get-DeviceStats @cmd_args -DnFilter $_.EquipmentDn
-                }
-            }
-
-            # Service Profile Policies
-            $profileHash.Policies = @{}
-            $profileHash.Policies.Bios = $sp.BiosProfileName
-            $profileHash.Policies.Fw = $sp.HostFwPolicyName
-            $profileHash.Policies.Ipmi = $sp.MgmtAccessPolicyName
-            $profileHash.Policies.Power = $sp.PowerPolicyName
-            $profileHash.Policies.Scrub = $sp.ScrubPolicyName
-            $profileHash.Policies.Sol = $sp.SolPolicyName
-            $profileHash.Policies.Stats = $sp.StatsPolicyName
-
-            # Add current profile to template profile array
-            $DomainHash.Profiles[$templateId].Profiles += $profileHash
-        }
+    $cmd_args = @{
+        handle = $handle
+        MaintenancePolicies = $MaintenancePolicies
+        Statistics = $Statistics
     }
+    $DomainHash.Profiles = Get-ServiceProfileData @cmd_args
+
     # End Service Profile Collection
 
     # Start LAN Configuration
+    # Set Job Progress
+    # $Process_Hash.Progress[$domain] =
+
     # Get the collection time interval for port performance
     $DomainHash.Collection = @{}
-    $interval = (Get-UcsCollectionPolicy -Ucs $handle -Name "port" | Select-Object CollectionInterval).CollectionInterval
+    $PortCollectionInterval = (Get-UcsCollectionPolicy -Ucs $handle -Name "port").CollectionInterval
     # Normalize collection interval to seconds
-    Switch -wildcard (($interval -split '[0-9]')[-1]) {
-        "minute*" {$DomainHash.Collection.Port = ((($interval -split '[a-z]')[0]) -as [int]) * 60}
-        "second*" {$DomainHash.Collection.Port = ((($interval -split '[a-z]')[0]) -as [int])}
-    }
-    # Uplink and Server Ports with Performance
-    $DomainHash.Lan.UplinkPorts = @()
-    $DomainHash.Lan.ServerPorts = @()
-    # Iterate through each FI and collect port performance data based on port role
-    $DomainHash.Inventory.FIs | ForEach-Object {
-        # Uplink Ports
-        $_.Ports | Where-Object IfRole -eq network | ForEach-Object {
-            $port = $_
-            $uplinkHash = @{}
-            $uplinkHash.Dn = $_.Dn
-            $uplinkHash.PortId = $_.PortId
-            $uplinkHash.SlotId = $_.SlotId
-            $uplinkHash.Fabric_Id = $_.SwitchId
-            $uplinkHash.Mac = $_.Mac
-            $uplinkHash.Speed = $_.OperSpeed
-            $uplinkHash.IfType = $_.IfType
-            $uplinkHash.IfRole = $_.IfRole
-            $uplinkHash.XcvrType = $_.XcvrType
-            $uplinkHash.Performance = @{}
-            $cmd_args = @{
-                UcsStats = $statistics
-                DnFilter = "$($port.Dn)/.*stats"
-                StatList = @("TotalBytes","TotalPackets","TotalBytesDeltaAvg")
-            }
-            $uplinkHash.Performance.Rx = Get-DeviceStats @cmd_args -RnFilter "rx[-]stats"
-            $uplinkHash.Performance.Tx = Get-DeviceStats @cmd_args -RnFilter "tx[-]stats"
-            $uplinkHash.Status = $_.OperState
-            $uplinkHash.State = $_.AdminState
-            $DomainHash.Lan.UplinkPorts += $uplinkHash
-        }
-        # Server Ports
-        $_.Ports | Where-Object IfRole -eq server | ForEach-Object {
-            $port = $_
-            $serverPortHash = @{}
-            $serverPortHash.Dn = $_.Dn
-            $serverPortHash.PortId = $_.PortId
-            $serverPortHash.SlotId = $_.SlotId
-            $serverPortHash.Fabric_Id = $_.SwitchId
-            $serverPortHash.Mac = $_.Mac
-            $serverPortHash.Speed = $_.OperSpeed
-            $serverPortHash.IfType = $_.IfType
-            $serverPortHash.IfRole = $_.IfRole
-            $serverPortHash.XcvrType = $_.XcvrType
-            $serverPortHash.Performance = @{}
-            $cmd_args = @{
-                UcsStats = $statistics
-                DnFilter = "$($port.Dn)/.*stats"
-                StatList = @("TotalBytes","TotalPackets","TotalBytesDeltaAvg")
-            }
-            $serverPortHash.Performance.Rx = Get-DeviceStats @cmd_args -RnFilter "rx[-]stats"
-            $serverPortHash.Performance.Tx = Get-DeviceStats @cmd_args -RnFilter "tx[-]stats"
-            $serverPortHash.Status = $_.OperState
-            $serverPortHash.State = $_.AdminState
-            $DomainHash.Lan.ServerPorts += $serverPortHash
-        }
-    }
-    # Fabric PortChannels
-    $DomainHash.Lan.FabricPcs = @()
-    Get-UcsFabricServerPortChannel -Ucs $handle | ForEach-Object {
-        $uplinkHash = @{}
-        $uplinkHash.Name = $_.Rn
-        $uplinkHash.Chassis = $_.ChassisId
-        $uplinkHash.Fabric_Id = $_.SwitchId
-        $uplinkHash.Members = $_ | Get-UcsFabricServerPortChannelMember | Select-Object EpDn,PeerDn
-        $DomainHash.Lan.FabricPcs += $uplinkHash
-    }
-    # Uplink PortChannels
-    $DomainHash.Lan.UplinkPcs = @()
-    Get-UcsUplinkPortChannel -Ucs $handle | ForEach-Object {
-        $uplinkHash = @{}
-        $uplinkHash.Name = $_.Rn
-        $uplinkHash.Members = $_ | Get-UcsUplinkPortChannelMember | Select-Object EpDn,PeerDn
-        $DomainHash.Lan.UplinkPcs += $uplinkHash
-    }
-    # Qos Domain Policies
-    $DomainHash.Lan.Qos = @{}
-    $DomainHash.Lan.Qos.Domain = @()
-    $DomainHash.Lan.Qos.Domain += Get-UcsQosClass -Ucs $handle | Sort-Object Cos -Descending
-    $DomainHash.Lan.Qos.Domain += Get-UcsBestEffortQosClass -Ucs $handle
-    $DomainHash.Lan.Qos.Domain += Get-UcsFcQosClass -Ucs $handle
-
-    # Qos Policies
-    $DomainHash.Lan.Qos.Policies = @()
-    Get-UcsQosPolicy -Ucs $handle | ForEach-Object {
-        $qosHash = @{}
-        $qosHash.Name = $_.Name
-        $qosHash.Owner = $_.PolicyOwner
-        ($qoshash.Burst,$qoshash.HostControl,$qoshash.Prio,$qoshash.Rate) = $_ | Get-UcsChild -ClassId EpqosEgress | Select-Object Burst,HostControl,Prio,Rate | ForEach-Object {$_.Burst,$_.HostControl,$_.Prio,$_.Rate}
-        $DomainHash.Lan.Qos.Policies += $qosHash
+    Switch -wildcard (($PortCollectionInterval -split '[0-9]')[-1]) {
+        "minute*" {$DomainHash.Collection.Port = ((($PortCollectionInterval -split '[a-z]')[0]) -as [int]) * 60}
+        "second*" {$DomainHash.Collection.Port = ((($PortCollectionInterval -split '[a-z]')[0]) -as [int])}
     }
 
-    # VLANs
-    $DomainHash.Lan.Vlans = @()
-    $DomainHash.Lan.Vlans += Get-UcsVlan -Ucs $handle | Where-Object {$_.IfRole -eq "network"} | Sort-Object -Property Ucs,Id
-
-    # Network Control Policies
-    $DomainHash.Lan.Control_Policies = @()
-    $DomainHash.Lan.Control_Policies += Get-UcsNetworkControlPolicy -Ucs $handle | Where-Object Dn -ne "fabric/eth-estc/nwctrl-default" | Select-Object Cdp,MacRegisterMode,Name,UplinkFailAction,Descr,Dn,PolicyOwner
-
-    # Mac Address Pool Definitions
-    $DomainHash.Lan.Mac_Pools = @()
-    Get-UcsMacPool -Ucs $handle | ForEach-Object {
-        $macHash = @{}
-        $macHash.Name = $_.Name
-        $macHash.Assigned = $_.Assigned
-        $macHash.Size = $_.Size
-        ($macHash.From,$macHash.To) = $_ | Get-UcsMacMemberBlock | Select-Object From,To | ForEach-Object {$_.From,$_.To}
-        $DomainHash.Lan.Mac_Pools += $macHash
+    $cmd_args = @{
+        handle = $handle
+        UcsFIs = $DomainHash.Inventory.FIs
+        Statistics = $Statistics
     }
-
-    # Mac Address Pool Allocations
-    $DomainHash.Lan.Mac_Allocations = @()
-    $DomainHash.Lan.Mac_Allocations += Get-UcsMacPoolPooled -Assigned yes | Select-Object Id,Assigned,AssignedToDn
-
-    # Ip Pool Definitions
-    $DomainHash.Lan.Ip_Pools = @()
-    Get-UcsIpPool -Ucs $handle | ForEach-Object {
-        $ipHash = @{}
-        $ipHash.Name = $_.Name
-        $ipHash.Assigned = $_.Assigned
-        $ipHash.Size = $_.Size
-        ($ipHash.From,$ipHash.To,$ipHash.DefGw,$ipHash.Subnet,$ipHash.PrimDns) = $_ | Get-UcsIpPoolBlock | Select-Object From,To,DefGw,PrimDns,Subnet | ForEach-Object {$_.From,$_.To,$_.DefGw,$_.Subnet,$_.PrimDns}
-        $DomainHash.Lan.Ip_Pools += $ipHash
-    }
-
-    # Ip Pool Allocations
-    $DomainHash.Lan.Ip_Allocations = @()
-    $DomainHash.Lan.Ip_Allocations += Get-UcsIpPoolPooled -Assigned yes | Select-Object AssignedToDn,DefGw,Id,PrimDns,Subnet,Assigned
-
-    # vNic Templates
-    $DomainHash.Lan.vNic_Templates = @()
-    $DomainHash.Lan.vNic_Templates += Get-UcsVnicTemplate -Ucs $handle | Select-Object Ucs,Dn,Name,Descr,SwitchId,TemplType,IdentPoolName,Mtu,NwCtrlPolicyName,QosPolicyName
+    $DomainHash.Lan = Get-LanTabData @cmd_args
 
     # End Lan Configuration
 
     # Start SAN Configuration
-    # Uplink and Storage Ports
-    $DomainHash.San.UplinkFcoePorts = @()
-    $DomainHash.San.UplinkFcPorts = @()
-    $DomainHash.San.StorageFcPorts = @()
-    $DomainHash.San.StoragePorts = @()
-    # Iterate through each FI and grab san performance data based on port role
-    $DomainHash.Inventory.FIs | ForEach-Object {
-        # SAN uplink ports
-        $_.Ports | Where-Object IfRole -cmatch "fc.*uplink" | ForEach-Object {
-            $port = $_
-            $uplinkHash = @{}
-            $uplinkHash.Dn = $_.Dn
-            $uplinkHash.PortId = $_.PortId
-            $uplinkHash.SlotId = $_.SlotId
-            $uplinkHash.Fabric_Id = $_.SwitchId
-            $uplinkHash.Mac = $_.Mac
-            $uplinkHash.Speed = $_.OperSpeed
-            $uplinkHash.IfType = $_.IfType
-            $uplinkHash.IfRole = $_.IfRole
-            $uplinkHash.XcvrType = $_.XcvrType
-            $uplinkHash.Performance = @{}
-            $cmd_args = @{
-                UcsStats = $statistics
-                DnFilter = "$($port.Dn)/.*stats"
-                StatList = @("TotalBytes","TotalPackets","TotalBytesDeltaAvg")
-            }
-            $uplinkHash.Performance.Rx = Get-DeviceStats @cmd_args -RnFilter "rx[-]stats"
-            $uplinkHash.Performance.Tx = Get-DeviceStats @cmd_args -RnFilter "tx[-]stats"
-            $uplinkHash.Status = $_.OperState
-            $uplinkHash.State = $_.AdminState
-            $DomainHash.San.UplinkFcoePorts += $uplinkHash
-        }
-        # FC Uplink Ports
-        $_.FcUplinkPorts | Where-Object IfRole -cmatch "network" | ForEach-Object {
-            $port = $_
-            $uplinkHash = @{}
-            $uplinkHash.Dn = $_.Dn
-            $uplinkHash.PortId = $_.PortId
-            $uplinkHash.SlotId = $_.SlotId
-            $uplinkHash.Fabric_Id = $_.SwitchId
-            $uplinkHash.Wwn = $_.Wwn
-            $uplinkHash.IfRole = $_.IfRole
-            $uplinkHash.Speed = $_.OperSpeed
-            $uplinkHash.Mode = $_.Mode
-            $uplinkHash.XcvrType = $_.XcvrType
-            $uplinkHash.Performance = @{}
-            $cmd_args = @{
-                UcsStats = $statistics
-                DnFilter = "$($port.Dn)/stats"
-                RnFilter = "stats"
-                StatList = @("BytesRx","PacketsRx","BytesRxDeltaAvg","BytesTx","PacketsTx","BytesTxDeltaAvg")
-            }
-            $stats = Get-DeviceStats @cmd_args
-            $uplinkHash.Performance.Rx = $stats | Select-Object BytesRx,PacketsRx,BytesRxDeltaAvg
-            $uplinkHash.Performance.Tx = $stats | Select-Object BytesTx,PacketsTx,BytesTxDeltaAvg
-            $uplinkHash.Status = $_.OperState
-            $uplinkHash.State = $_.AdminState
-            $DomainHash.San.UplinkFcPorts += $uplinkHash
-        }
-        # FC storage ports
-        $_.FcUplinkPorts | Where-Object IfRole -cmatch "storage" | ForEach-Object {
-            $port = $_
-            $storageFcPortHash = @{}
-            $storageFcPortHash.Dn = $_.Dn
-            $storageFcPortHash.PortId = $_.PortId
-            $storageFcPortHash.SlotId = $_.SlotId
-            $storageFcPortHash.Fabric_Id = $_.SwitchId
-            $storageFcPortHash.Wwn = $_.Wwn
-            $storageFcPortHash.IfRole = $_.IfRole
-            $storageFcPortHash.Speed = $_.OperSpeed
-            $storageFcPortHash.Mode = $_.Mode
-            $storageFcPortHash.XcvrType = $_.XcvrType
-            $storageFcPortHash.Performance = @{}
-            $cmd_args = @{
-                UcsStats = $statistics
-                DnFilter = "$($port.Dn)/stats"
-                RnFilter = "stats"
-                StatList = @("BytesRx","PacketsRx","BytesRxDeltaAvg","BytesTx","PacketsTx","BytesTxDeltaAvg")
-            }
-            $stats = Get-DeviceStats @cmd_args
-            $storageFcPortHash.Performance.Rx = $stats | Select-Object BytesRx,PacketsRx,BytesRxDeltaAvg
-            $storageFcPortHash.Performance.Tx = $stats | Select-Object BytesTx,PacketsTx,BytesTxDeltaAvg
-            $storageFcPortHash.Status = $_.OperState
-            $storageFcPortHash.State = $_.AdminState
-            $DomainHash.San.StorageFcPorts += $storageFcPortHash
-        }
-        # Ethernet SAN storage ports
-        $_.Ports | Where-Object IfRole -cmatch "storage" | ForEach-Object {
-            $port = $_
-            $storagePortHash = @{}
-            $storagePortHash.Dn = $_.Dn
-            $storagePortHash.PortId = $_.PortId
-            $storagePortHash.SlotId = $_.SlotId
-            $storagePortHash.Fabric_Id = $_.SwitchId
-            $storagePortHash.Mac = $_.Mac
-            $storagePortHash.Speed = $_.OperSpeed
-            $storagePortHash.IfType = $_.IfType
-            $storagePortHash.IfRole = $_.IfRole
-            $storagePortHash.XcvrType = $_.XcvrType
-            $storagePortHash.Performance = @{}
-            $cmd_args = @{
-                UcsStats = $statistics
-                DnFilter = "$($port.Dn)/.*stats"
-                StatList = @("TotalBytes","TotalPackets","TotalBytesDeltaAvg")
-            }
-            $storagePortHash.Performance.Rx = Get-DeviceStats @cmd_args -RnFilter "rx[-]stats"
-            $storagePortHash.Performance.Tx = Get-DeviceStats @cmd_args -RnFilter "tx[-]stats"
-            $storagePortHash.Status = $_.OperState
-            $storagePortHash.State = $_.AdminState
-            $DomainHash.San.StoragePorts += $storagePortHash
-        }
-    }
-    # Uplink PortChannels
-    $DomainHash.San.UplinkPcs = @()
-    # Native FC PC uplinks
-    Get-UcsFcUplinkPortChannel -Ucs $handle | ForEach-Object {
-        $uplinkHash = @{}
-        $uplinkHash.Name = $_.Rn
-        $uplinkHash.Members = $_ | Get-UcsUplinkFcPort | Select-Object EpDn,PeerDn
-        $DomainHash.San.UplinkPcs += $uplinkHash
-    }
-    # FCoE PC uplinks
-    Get-UcsFabricFcoeSanPc -Ucs $handle | ForEach-Object {
-        $uplinkHash = @{}
-        $uplinkHash.Name = $_.Rn
-        $uplinkHash.Members = $_ | Get-UcsFabricFcoeSanPcEp | Select-Object EpDn
-        $DomainHash.San.FcoePcs += $uplinkHash
-    }
+    # Set Job Progress
+    # $Process_Hash.Progress[$domain] =
 
-    # VSANs
-    $DomainHash.San.Vsans = @()
-    $DomainHash.San.Vsans += Get-UcsVsan -Ucs $handle | Select-Object FcoeVlan,Id,name,SwitchId,ZoningState,IfRole,IfType,Transport
-
-    # WWN Pools
-    $DomainHash.San.Wwn_Pools = @()
-    Get-UcsWwnPool -Ucs $handle | ForEach-Object {
-        $wwnHash = @{}
-        $wwnHash.Name = $_.Name
-        $wwnHash.Assigned = $_.Assigned
-        $wwnHash.Size = $_.Size
-        $wwnHash.Purpose = $_.Purpose
-        ($wwnHash.From,$wwnHash.To) = $_ | Get-UcsWwnMemberBlock | Select-Object From,To | ForEach-Object {$_.From,$_.To}
-        $DomainHash.San.Wwn_Pools += $wwnHash
+    $cmd_args = @{
+        handle = $handle
+        UcsFIs = $DomainHash.Inventory.FIs
+        Statistics = $Statistics
     }
-    # WWN Allocations
-    $DomainHash.San.Wwn_Allocations = @()
-    $DomainHash.San.Wwn_Allocations += Get-UcsWwnInitiator -Assigned yes | Select-Object AssignedToDn,Id,Assigned,Purpose
-
-    # vHba Templates
-    $DomainHash.San.vHba_Templates = Get-UcsVhbaTemplate -Ucs $handle | Select-Object Name,TempType
+    $DomainHash.San = Get-SanTabData @cmd_args
 
     # End San Configuration
 
-    # Get Event List
-    # Update current job progress
+    # Start Fault List
+
+    # Set Job Progress
     $Process_Hash.Progress[$domain] = 84
-    # Grab faults of critical, major, minor, and warning severity sorted by severity
-    $faultList = Get-UcsFault -Ucs $handle -Filter 'Severity -cmatch "critical|major|minor|warning"' | Sort-Object -Property Ucs,Severity | Select-Object Ucs,Severity,Created,Descr,dn
-    if($faultList) {
-        # Iterate through each fault and grab information
-        foreach ($fault in $faultList) {
-            $faultHash = @{}
-            $faultHash.Severity = $fault.Severity;
-            $faultHash.Descr = $fault.Descr
-            $faultHash.Dn = $fault.Dn
-            $faultHash.Date = $fault.Created
-            $DomainHash.Faults += $faultHash
-        }
-    }
-    # Update current job progress
+
+    $DomainHash.Faults += Get-FaultData -handle $handle
+
+    # End Fault List
+
+    # Set Job Progress
     $Process_Hash.Progress[$domain] = 96
+
     Complete-UcsTransaction -Ucs $handle
     # Add current Domain data to global process Hash
     $Process_Hash.Domains[$DomainName] = $DomainHash
