@@ -1667,29 +1667,28 @@ function Get-ServiceProfileData {
 
     $Data = @{}
 
-    # Node WWN Configuration
-    $VnicFcNode = Get-UcsVnicFcNode
-    # Grab VNIC connectivity
-    $VnicConnDef = Get-UcsVnicConnDef
+    # Get data from UCS domain once instead of repeated calls within loops
+    # Service Profile Collection - Includes both Templates and Instances
+    $AllSPs = Get-UcsServiceProfile -Ucs $handle
+    # Node WWN Collection - Query for WWNN assignment to Service Profile
+    $VnicFcNode = Get-UcsVnicFcNode -Ucs $handle
+    # LAN Connectivity Policy Collection - Query for Policy assignment to Service Profile
+    $VnicConnDef = Get-UcsVnicConnDef -Ucs $handle
 
-    # Grab all Service Profiles
-    $AllSPs = Get-ucsServiceProfile -Ucs $handle
-
-    # Array variable for storing template data
+    # Create array of Service Profile Template DNs + 1 blank. Blank is used for Service Profiles with no template.
     $SPTemplateDNs = @()
-    # Grab all service profile templates
-    $SPTemplateDNs += ($AllSPs | Where-Object {$_.Type -match "(updating|initial)-template"}).Dn
-    # Add an empty template entry for profiles not bound to a template
+    $SPTemplateDNs += ($AllSPs.Where({$_.Type -match "(updating|initial)-template"})).Dn
     $SPTemplateDNs += ""
 
-    # Iterate through templates and grab configuration data
+    # Iterate DN array and acquire configuration data
     foreach ($SPTemplateDN in $SPTemplateDNs) {
         # Get service profile object by DN string
-        $SPTemplate = $AllSPs | Where-Object {$_.Dn -eq "$SPTemplateDN"}
+        # Blank DN yields [System.Management.Automation.Internal.AutomationNull]::Value
+        $SPTemplate = $AllSPs.Where({$_.Dn -eq "$SPTemplateDN"})
 
-        $SPTemplateName = If ($SPTemplate) {$SPTemplate.Name} Else {"Unbound"}
+        $SPTemplateName = if ($SPTemplate) {$SPTemplate.Name} else {"Unbound"}
 
-        # Hash variable to store data for current templateName
+        # Temp var. Populates $domainHash.Profiles.<SPT Dn>
         $SPTemplateData = @{}
 
         # Switch statement to format the template type
@@ -1699,10 +1698,11 @@ function Get-ServiceProfileData {
             default {$SPTemplateType = "N/A"}
         }
 
+        # TODO: This data is duplicated: top level and under General
         $SPTemplateData.Type = $SPTemplateType
 
         # Template Details - General Tab
-        # Hash variable for general data
+        # Temp var. Populates $domainHash.Profiles.<SPT Dn>.General
         $SPTemplateData.General = @{}
         $cmd_args = @{
             ServiceProfile = $SPTemplate
@@ -1713,13 +1713,12 @@ function Get-ServiceProfileData {
         $SPTemplateData.General = Get-ServiceProfileGeneralData @cmd_args
 
         # Template Details - Policies Tab
-
-        # Hash variable for storing template Policy configuration data
+        # Temp var. Populates $domainHash.Profiles.<SPT Dn>.Policies
         $SPTemplateData.Policies = @{}
         $SPTemplateData.Policies = Get-ServiceProfilePoliciesData -ServiceProfile $SPTemplate
 
         # Template Details - Storage Tab
-        # Hash variable for storing storage template data
+        # Temp var. Populates $domainHash.Profiles.<SPT Dn>.Storage
         $SPTemplateData.Storage = @{}
         $cmd_args = @{
             ServiceProfile = $SPTemplate
@@ -1729,8 +1728,7 @@ function Get-ServiceProfileData {
         $SPTemplateData.Storage = Get-ServiceProfileStorageData @cmd_args
 
         # Template Details - Network Tab
-
-        # Hash variable for storing template network configuration
+        # Temp var. Populates $domainHash.Profiles.<SPT Dn>.Network
         $SPTemplateData.Network = @{}
         $cmd_args = @{
             ServiceProfile = $SPTemplate
@@ -1739,88 +1737,85 @@ function Get-ServiceProfileData {
         $SPTemplateData.Network = Get-ServiceProfileNetworkData @cmd_args
 
         # Template Details - iSCSI vNICs Tab
-
-        # Array variable for storing iSCSI configuration
+        # Temp var. Populates $domainHash.Profiles.<SPT Dn>.iSCSI
         $SPTemplateData.iSCSI = @()
         $SPTemplateData.iSCSI += Get-ServiceProfileIscsiData -ServiceProfile $SPTemplate
 
-        # Service Profile Instances
-
-        # Array variable for storing profiles tied to current template name
+        # Service Profile Instances (Only instances bound to current template.)
+        # Temp var. Populates $domainHash.Profiles.<SPT Dn>.Profiles
         $SPTemplateData.Profiles = @()
 
-        # Iterate through all profiles tied to the current template name
-        $AllSPs | Where-Object {$_.OperSrcTemplName -ieq "$SPTemplateDN" -and $_.Type -ieq "instance"} | ForEach-Object {
-            # Store current pipe variable to local variable
-            $sp = $_
-            # Hash variable for storing current profile configuration data
-            $profileHash = @{}
+        # Iterate collection of bound service profiles
+        $BoundSPs = $AllSPs.Where({$_.OperSrcTemplName -ieq "$SPTemplateDN" -and $_.Type -ieq "instance"})
+        foreach ($BoundSP in $BoundSPs) {
+            # Temp var. Populates $domainHash.Profiles.<SPT Dn>.Profiles.<SP Array>.<item>
+            $BoundSPData = @{}
 
-            # Service Profile Details - Top Level Data
+            # Service Profiles Tab Tables
+            $BoundSPData.Dn = $BoundSP.Dn
+            $BoundSPData.Service_Profile = $BoundSP.Name
+            $BoundSPData.UsrLbl = $BoundSP.UsrLbl
+            $BoundSPData.Assigned_Server = $BoundSP.PnDn
+            $BoundSPData.Assoc_State = $BoundSP.AssocState
+            $BoundSPData.Maint_Policy = $BoundSP.MaintPolicyName
+            $BoundSPData.Maint_PolicyInstance = $BoundSP.OperMaintPolicyName
+            $BoundSPData.FW_Policy = $BoundSP.HostFwPolicyName
+            $BoundSPData.BIOS_Policy = $BoundSP.BiosProfileName
+            $BoundSPData.Boot_Policy = $BoundSP.OperBootPolicyName
 
-            $profileHash.Dn = $sp.Dn
-            $profileHash.Service_Profile = $sp.Name
-            $profileHash.UsrLbl = $sp.UsrLbl
-            $profileHash.Assigned_Server = $sp.PnDn
-            $profileHash.Assoc_State = $sp.AssocState
-            $profileHash.Maint_Policy = $sp.MaintPolicyName
-            $profileHash.Maint_PolicyInstance = $sp.OperMaintPolicyName
-            $profileHash.FW_Policy = $sp.HostFwPolicyName
-            $profileHash.BIOS_Policy = $sp.BiosProfileName
-            $profileHash.Boot_Policy = $sp.OperBootPolicyName
-
-            # Service Profile Details - General Tab
-
-            # Hash variable for storing general profile configuration data
-            $profileHash.General = @{}
+            # Service Profile Details Modal - General Tab
+            # Temp var. Populates $domainHash.Profiles.<SPT Dn>.Profiles.<SP Array>.<item>.General
+            $BoundSPData.General = @{}
             $cmd_args = @{
-                ServiceProfile = $sp
+                ServiceProfile = $BoundSP
                 MaintenancePolicies = $MaintenancePolicies
                 SPTemplateType = $SPTemplateType
                 SPTemplateName = $SPTemplateName
             }
-            $profileHash.General = Get-ServiceProfileGeneralData @cmd_args
+            $BoundSPData.General = Get-ServiceProfileGeneralData @cmd_args
 
-            # Service Profile Policies
-            $profileHash.Policies = @{}
-            $profileHash.Policies = Get-ServiceProfilePoliciesData -ServiceProfile $sp
+            # Service Profile Details Modal - Policies Tab
+            # Temp var. Populates $domainHash.Profiles.<SPT Dn>.Profiles.<SP Array>.<item>.Policies
+            $BoundSPData.Policies = @{}
+            $BoundSPData.Policies = Get-ServiceProfilePoliciesData -ServiceProfile $BoundSP
 
-            # Service Profile Details - Storage Tab
-
-            $profileHash.Storage = @{}
+            # Service Profile Details Modal - Storage Tab
+            # Temp var. Populates $domainHash.Profiles.<SPT Dn>.Profiles.<SP Array>.<item>.Storage
+            $BoundSPData.Storage = @{}
             $cmd_args = @{
-                ServiceProfile = $sp
+                ServiceProfile = $BoundSP
                 VnicFcNode = $VnicFcNode
                 VnicConnDef = $VnicConnDef
             }
-            $profileHash.Storage = Get-ServiceProfileStorageData @cmd_args
+            $BoundSPData.Storage = Get-ServiceProfileStorageData @cmd_args
 
-            # Service Profile Details - Network Tab
-
-            $profileHash.Network = @{}
+            # Service Profile Details Modal - Network Tab
+            # Temp var. Populates $domainHash.Profiles.<SPT Dn>.Profiles.<SP Array>.<item>.Network
+            $BoundSPData.Network = @{}
             $cmd_args = @{
-                ServiceProfile = $sp
+                ServiceProfile = $BoundSP
                 VnicConnDef = $VnicConnDef
             }
-            $profileHash.Network = Get-ServiceProfileNetworkData @cmd_args
+            $BoundSPData.Network = Get-ServiceProfileNetworkData @cmd_args
 
-            # Service Profile Details - iSCSI vNICs
+            # Service Profile Details Modal - iSCSI Tab
+            # Temp var. Populates $domainHash.Profiles.<SPT Dn>.Profiles.<SP Array>.<item>.iSCSI
+            $BoundSPData.iSCSI = @()
+            $BoundSPData.iSCSI += Get-ServiceProfileIscsiData -ServiceProfile $BoundSP
 
-            $profileHash.iSCSI = @()
-            $profileHash.iSCSI += Get-ServiceProfileIscsiData -ServiceProfile $sp
+            # Service Profile Details Modal - Performance Tab
+            # Temp var. Populates $domainHash.Profiles.<SPT Dn>.Profiles.<SP Array>.<item>.Performance
+            $BoundSPData.Performance = @{}
 
-            # Service Profile Details - Performance
-
-            $profileHash.Performance = @{}
-
-            # Only grab performance data if the profile is associated
-            if($profileHash.Assoc_State -eq 'associated') {
+            # Acquire data for associated Service Profiles only (i.e., bound to hardware)
+            if($BoundSPData.Assoc_State -eq 'associated') {
+                # TODO: Migrate this data to top level ($domainHash.Collection). Doesn't make sense here.
                 # Get the collection time interval for adapter performance
                 $interval = (Get-UcsCollectionPolicy -Name "adapter" | Select-Object CollectionInterval).CollectionInterval
                 # Normalize collection interval to seconds
                 Switch -wildcard (($interval -split '[0-9]')[-1]) {
-                    "minute*" {$profileHash.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int]) * 60}
-                    "second*" {$profileHash.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int])}
+                    "minute*" {$BoundSPData.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int]) * 60}
+                    "second*" {$BoundSPData.Performance.Interval = ((($interval -split '[a-z]')[0]) -as [int])}
                 }
 
                 $cmd_args = @{
@@ -1829,21 +1824,22 @@ function Get-ServiceProfileData {
                     StatList = @("BytesRx","BytesRxDeltaAvg","BytesTx","BytesTxDeltaAvg","PacketsRx","PacketsRxDeltaAvg","PacketsTx","PacketsTxDeltaAvg")
                 }
                 # Iterate through each vHBA and grab performance data
-                $profileHash.Performance.vHbas = @{}
-                $profileHash.Storage.Hbas | ForEach-Object {
-                    $profileHash.Performance.vHbas[$_.Name] = Get-DeviceStats @cmd_args -DnFilter $_.EquipmentDn
+                $BoundSPData.Performance.vHbas = @{}
+                $BoundSPData.Storage.Hbas | ForEach-Object {
+                    $BoundSPData.Performance.vHbas[$_.Name] = Get-DeviceStats @cmd_args -DnFilter $_.EquipmentDn
                 }
                 # Iterate through each vNIC and grab performance data
-                $profileHash.Performance.vNics = @{}
-                $profileHash.Network.Nics | ForEach-Object {
-                    $profileHash.Performance.vNics[$_.Name] = Get-DeviceStats @cmd_args -DnFilter $_.EquipmentDn
+                $BoundSPData.Performance.vNics = @{}
+                $BoundSPData.Network.Nics | ForEach-Object {
+                    $BoundSPData.Performance.vNics[$_.Name] = Get-DeviceStats @cmd_args -DnFilter $_.EquipmentDn
                 }
             }
 
-            # Add current profile to template profile array
-            $SPTemplateData.Profiles += $profileHash
+            # Add current data to array
+            $SPTemplateData.Profiles += $BoundSPData
         }
 
+        # Add current data to hashtable
         $Data[$SPTemplateDN] = $SPTemplateData
     }
     return $Data
@@ -2280,7 +2276,6 @@ function Invoke-UcsDataGather {
 
     # Set Job Progress
     # $Process_Hash.Progress[$domain] =
-    Write-Host "`t??% | $(Get-ElapsedTime -FirstTimestamp $start) | Chassis Data"
 
     $cmd_args = @{
         handle = $handle
