@@ -4426,29 +4426,67 @@
 			) {
 				$('#Template-Details .nav li a[href="#Template-Details-Vifs"]').show(),
 				$("#Template-Details-Vifs .Vif-Details").remove();
-				var d = $.grep(Domains[$("#DomainSelect .hidden").text()].Inventory.Blades.concat(Domains[$("#DomainSelect .hidden").text()].Inventory.Rackmounts), function(t) {
+				var d = $.grep(Domains[$("#DomainSelect .hidden").text()].Inventory.Blades.concat(Domains[$("#DomainSelect .hidden").text()].Inventory.Rackmounts),
+				function(t) {
 					return t.Dn == e.General.Associated_Server
 				})[0];
 				$.each(d.VIFs, function(t, e) {
 					var o = "profile-vif-" + t,
 						a = $("#Profile-Vifs-Template").clone().prop("id", o).removeClass("hidden");
-					$(a).find(".panel-title a").prop("href", "#" + o + "-Collapse"), $(a).find(".panel-collapse").prop("id", o + "-Collapse"), $(a).find(".heading-icon:last").after(e.Name), $(a).addClass("Vif-Details"), $(a).find(".physical tbody").append("<tr><td>" + e.Adapter_Port + "</td><td>" + e.Fex_Host_Port + "</td><td>" + e.Fex_Network_Port + "</td><td>" + e.FI_Server_Port + "</td></tr>"), e.Circuits.forEach(function(t) {
-						$(a).find(".vifs tbody").append("<tr><td>" + t.Name + "</td><td>" + t.vNic + "</td><td>" + t.FI_Uplink + "</td><td>" + t.Link_State + "</td></tr>")
+					$(a).find(".panel-title a").prop("href", "#" + o + "-Collapse"),
+					$(a).find(".panel-collapse").prop("id", o + "-Collapse"),
+					$(a).find(".heading-icon:last").after(e.Name),
+					$(a).addClass("Vif-Details"),
+					$(a).find(".physical tbody").append(
+						"<tr><td>" +
+						e.Adapter_Port + "</td><td>" +
+						e.Fex_Host_Port + "</td><td>" +
+						e.Fex_Network_Port + "</td><td>" +
+						e.FI_Server_Port + "</td></tr>"),
+					e.Circuits.forEach(function(t) {
+						$(a).find(".vifs tbody").append(
+							"<tr><td>" +
+							t.Name + "</td><td>" +
+							t.vNic + "</td><td>" +
+							t.FI_Uplink + "</td><td>" +
+							t.Link_State + "</td></tr>")
 					}),
 					$(a).find(".panel-collapse").on("hidden.bs.collapse", function(t, e) {
-						$("#" + t.target.id).parent().find(".panel-heading:first .glyphicon-minus:first").addClass("hidden"), $("#" + t.target.id).parent().find(".panel-heading:first .glyphicon-th-list:first").removeClass("hidden")
+						$("#" + t.target.id).parent().find(".panel-heading:first .glyphicon-minus:first").addClass("hidden"),
+						$("#" + t.target.id).parent().find(".panel-heading:first .glyphicon-th-list:first").removeClass("hidden")
 					}),
 					$(a).find(".panel-collapse").on("shown.bs.collapse", function(t, e) {
-						$("#" + t.target.id).parent().find(".panel-heading:first .glyphicon-th-list:first").addClass("hidden"), $("#" + t.target.id).parent().find(".panel-heading:first .glyphicon-minus:first").removeClass("hidden")
+						$("#" + t.target.id).parent().find(".panel-heading:first .glyphicon-th-list:first").addClass("hidden"),
+						$("#" + t.target.id).parent().find(".panel-heading:first .glyphicon-minus:first").removeClass("hidden")
 					}), $("#Profile-Vifs-Template").parent().append(a)
 				}),
-				$("#Template-Details-Performance tbody tr").remove(), $.each(e.Performance.vNics, function(t, o) {
-					$("#Template-Details-Vnic-Performance tbody").append("<tr><td>" + t + "</td><td>" + o.BytesRx + "</td><td>" + o.BytesTx + "</td><td>" + o.PacketsRx + "</td><td>" + o.PacketsRx + "</td><td>" + (8 * o.BytesRxDeltaAvg / e.Performance.Interval / 1048576).toFixed(4) + "</td><td>" + (8 * o.BytesTxDeltaAvg / e.Performance.Interval / 1048576).toFixed(4) + "</td></tr>")
+				$("#Template-Details-Performance tbody tr").remove(),
+				$.each(e.Performance.vNics, function(t, o) {
+					$("#Template-Details-Vnic-Performance tbody").append(
+						"<tr><td>" +
+						t + "</td><td>" +
+						o.BytesRx + "</td><td>" +
+						o.BytesTx + "</td><td>" +
+						o.PacketsRx + "</td><td>" +
+						o.PacketsRx + "</td><td>" +
+						(8 * o.BytesRxDeltaAvg / e.Performance.Interval / 1048576).toFixed(4) + "</td><td>" +
+						(8 * o.BytesTxDeltaAvg / e.Performance.Interval / 1048576).toFixed(4) + "</td></tr>")
 				}),
 				$.each(e.Performance.vHbas, function(t, o) {
-					$("#Template-Details-Vhba-Performance tbody").append("<tr><td>" + t + "</td><td>" + o.BytesRx + "</td><td>" + o.BytesTx + "</td><td>" + o.PacketsRx + "</td><td>" + o.PacketsRx + "</td><td>" + (8 * o.BytesRxDeltaAvg / e.Performance.Interval / 1048576).toFixed(4) + "</td><td>" + (8 * o.BytesTxDeltaAvg / e.Performance.Interval / 1048576).toFixed(4) + "</td></tr>")
+					$("#Template-Details-Vhba-Performance tbody").append(
+						"<tr><td>" +
+						t + "</td><td>" +
+						o.BytesRx + "</td><td>" +
+						o.BytesTx + "</td><td>" +
+						o.PacketsRx + "</td><td>" +
+						o.PacketsRx + "</td><td>" +
+						(8 * o.BytesRxDeltaAvg / e.Performance.Interval / 1048576).toFixed(4) + "</td><td>" +
+						(8 * o.BytesTxDeltaAvg / e.Performance.Interval / 1048576).toFixed(4) + "</td></tr>")
 				})
-			} else $('#Template-Details .nav li a[href="#Template-Details-Vifs"]').hide();
+			} else {
+				$('#Template-Details .nav li a[href="#Template-Details-Vifs"]').hide()
+				$('#Template-Details .nav li a[href="#Template-Details-Performance"]').hide()
+			};
 			$('#Template-Details .nav li a[href="#Template-Details-Boot"]').show(),
 			$("#Template-Blade-Configured tbody tr").remove(),
 			$("#Template-Blade-Configured ul").remove();
