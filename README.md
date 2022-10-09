@@ -76,14 +76,20 @@ The current stable version will always be in the master branch.
 3. (Optional) Configure Scheduled Task (Windows) or cron job (Mac) to run the script on a regular basis
 
 ## What's New
-**Version 4.3 - TBD**
+**Version 4.3 - 10/9/2022**
 - New Features
   - NoStats CLI option now fully functional
-  - Fixed: Multi-controller servers now show disks for all controllers.
+  - Fixed: Multi-controller servers now show disks for all controllers. (Visible in Server Details)
+  - Improved: IOM ports now sorted by ID (Visible in IOM Details)
+  - Improved: Local Disk configuration policy data clarified (Visible under Service Profile Details)
 - Code Revisions
-  - Major performance improvement on stats lookup by filtering initial results.
-    - Test domain with 1 chassis and 4 blades had ~10K stats records. Filter reduced to ~700. Individual lookups reduced from ~500ms to ~20ms.
-  - Variable name updates. Duplicate boot order code removed.
+  - Performance improvements
+    - Stats lookups base on complete database. Reduced searchable collection by 93% and increased serch performance by 96%.  For 8-blade domain, reduced script time by 1/3.
+    - Removed repetitive calls to UCS where possible. Replaced with single call to get larger collection, then filtered results where the objects are used.
+      - Identified several additional items during review and marked with TODO.  Estimated benefit for fixes is 1-2 seconds for overall script execution.
+  - Variable names update. Standardized loop triplet: objects, object, objectData.
+  - Main code block split into ~15 functions.
+    - Numerous duplicate code blocks consolidated. Where needed, additional logic added to deal with variations.
 
 **Version 4.2 - 9/1/2022**
 - New Features
@@ -130,11 +136,15 @@ The current stable version will always be in the master branch.
 ## Update Objectives in Progress
 - [ ] Improve performance
 - [ ] Apply Python style coding practices according to [The PowerShell Style Guide][3]
-- [ ] Refactor where possible to make code more DRY and readable
 - [ ] Add reporting for the following use cases
   - [ ] Port Channels
   - [ ] Disjoint L2
   - [ ] Call Home Detail
+  - [X] FC Storage Ports
+- [X] Refactor where possible to make code more DRY and readable
+- [X] Fix known bugs in existing 2.6 version
+- [X] Separate HTML report template (including CSS and JScript) to ease updates
+- [X] Change minimum PowerShell version to 5
 
 [1]: https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-macos?view=powershell-7.2
 [2]: https://kb.vmware.com/s/article/59235

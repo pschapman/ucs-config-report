@@ -34,7 +34,7 @@ task.
 Script Version: 4.3
 JSON Schema Version 4.2
 Attributions::
-    Author: Paul S. Chapman (pchapman@convergeone.com) 09/03/2022
+    Author: Paul S. Chapman (pchapman@convergeone.com) 10/09/2022
     History: UCS Configuration Report forked from UCS Health Check v2.6
     Source: Brandon Beck (robbeck@cisco.com) 05/11/2014
     Contribution: Marcello Turano
@@ -1066,6 +1066,7 @@ function Get-SystemData {
 
     return $Data
 }
+
 function Get-InventoryFIData {
     <#
     .DESCRIPTION
@@ -1626,9 +1627,6 @@ function Get-ServiceProfileIscsiData {
     }
 
     return $Data
-}
-
-function Get-ServiceProfileBootOrderData {
 }
 
 function Get-ServiceProfilePoliciesData {
