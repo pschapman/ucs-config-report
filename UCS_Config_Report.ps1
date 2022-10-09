@@ -1432,7 +1432,8 @@ function Get-ServiceProfileGeneralData {
 
     $Data = @{}
 
-    if (!$ServiceProfile) {$ServiceProfile = $dummy | Where-Object {$dummy -eq "''"}}
+    # Workaround solution. Monolithic function blah
+    if (!$ServiceProfile) {$ServiceProfile = [System.Management.Automation.Internal.AutomationNull]::Value}
 
     if ($ServiceProfile.Type -match "instance") {
         # Regular Service Profiles
@@ -1492,7 +1493,8 @@ function Get-ServiceProfileStorageData {
 
     $Data = @{}
 
-    if (!$ServiceProfile) {$ServiceProfile = $dummy | Where-Object {$dummy -eq "''"}}
+    # Workaround solution. Monolithic function blah
+    if (!$ServiceProfile) {$ServiceProfile = [System.Management.Automation.Internal.AutomationNull]::Value}
 
     if ($ServiceProfile) {
         $Data.Nwwn = ($VnicFcNode.Where({$_.Dn -match $ServiceProfile.Dn})).Addr
@@ -1545,7 +1547,8 @@ function Get-ServiceProfileNetworkData {
 
     $Data = @{}
 
-    if (!$ServiceProfile) {$ServiceProfile = $dummy | Where-Object {$dummy -eq "''"}}
+    # Workaround solution. Monolithic function blah
+    if (!$ServiceProfile) {$ServiceProfile = [System.Management.Automation.Internal.AutomationNull]::Value}
 
     # Lan Connectivity Policy
     if ($ServiceProfile) {
@@ -1604,7 +1607,8 @@ function Get-ServiceProfileIscsiData {
 
     $Data = @()
 
-    if (!$ServiceProfile) {$ServiceProfile = $dummy | Where-Object {$dummy -eq "''"}}
+    # Workaround solution. Monolithic function blah
+    if (!$ServiceProfile) {$ServiceProfile = [System.Management.Automation.Internal.AutomationNull]::Value}
 
     # Iterate through iSCSI interface configuration
     $Nics = $ServiceProfile | Get-UcsVnicIscsi
