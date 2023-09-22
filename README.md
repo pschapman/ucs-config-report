@@ -21,6 +21,9 @@ This script requires both:
 ## Git Branches
 The current stable version will always be in the master branch.
 
+## Note on Microsoft Internet Explorer
+The HTML report file is **NOT** compatible with IE.  Output has been tested with Edge, Chrome, and Firefox and is expected to work with other *modern* browsers.
+
 ## Procedures
 ### Setup
 1. Install UCS Power Tool (Check with `Get-Module -ListAvailable -Name Cisco.UCSManager | select Name,Version`)
@@ -76,6 +79,10 @@ The current stable version will always be in the master branch.
 3. (Optional) Configure Scheduled Task (Windows) or cron job (Mac) to run the script on a regular basis
 
 ## What's New
+**Version 4.3a - 9/22/2023**
+- New Features
+  - Added MTU column to Network tab on Service Profile and Service Profile Template detail pages
+
 **Version 4.3 - 10/9/2022**
 - New Features
   - NoStats CLI option now fully functional

@@ -31,10 +31,10 @@ Run Script with no interaction and email report. UCS cache file must be populate
 task.
 
 .NOTES
-Script Version: 4.3
+Script Version: 4.3a
 JSON Schema Version 4.2
 Attributions::
-    Author: Paul S. Chapman (pchapman@convergeone.com) 10/09/2022
+    Author: Paul S. Chapman (pchapman@convergeone.com) 09/22/2023
     History: UCS Configuration Report forked from UCS Health Check v2.6
     Source: Brandon Beck (robbeck@cisco.com) 05/11/2014
     Contribution: Marcello Turano
@@ -1577,11 +1577,9 @@ function Get-ServiceProfileNetworkData {
         $NicData.Actual_Placement = $Nic.OperVcon
         $NicData.Adaptor_Profile = $Nic.AdaptorProfileName
         $NicData.Control_Policy = $Nic.NwCtrlPolicyName
-        if ($ServiceProfile.Type -eq 'instance') {
-            $NicData.Qos = $Nic.OperQosPolicyName
-            $NicData.Mtu = $Nic.Mtu
-            $NicData.EquipmentDn = $Nic.EquipmentDn
-        }
+        $NicData.Qos = $Nic.OperQosPolicyName
+        $NicData.Mtu = $Nic.Mtu
+        $NicData.EquipmentDn = $Nic.EquipmentDn
 
         # Array for storing VLANs
         $NicData.Vlans = @()
@@ -1654,6 +1652,8 @@ function Get-ServiceProfileData {
         Handle (object reference) to target UCS domain
     .PARAMETER $Statistics
         Object reference to Get-UcsStatistics
+    .PARAMETER $MaintenancePolicies
+        Object reference to results of Get-UcsMaintenancePolicy
     .OUTPUTS
     #>
 

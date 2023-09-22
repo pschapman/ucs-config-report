@@ -2729,8 +2729,9 @@
 													<th>Fabric ID</th>
 													<th>Desired Placement</th>
 													<th>Actual Placement</th>
-													<th class="visible-large">Adaptor Profile</th>
-													<th class="visible-large">Control Policy</th>
+													<th>Adaptor Profile</th>
+													<th>Control Policy</th>
+													<th>MTU</th>
 												</tr>
 											</thead>
 											<tbody></tbody>
@@ -2747,6 +2748,7 @@
 															<th style="border: 1px solid #ddd;padding:5px;">Fabric ID-2</th>
 															<th style="border: 1px solid #ddd;padding:5px;">Desired Placement-2</th>
 															<th style="border: 1px solid #ddd;padding:5px;">Actual Placement-2</th>
+															<th style="border: 1px solid #ddd;padding:5px;">MTU-2</th>
 														</tr>
 													</thead>
 													<tbody></tbody>
@@ -4247,17 +4249,18 @@
 				"" == t.Adaptor_Profile && (t.Adaptor_Profile = "none"),
 				"" == t.Control_Policy && (t.Control_Policy = "none"),
 				$("#Template-Details-vNICs-Collapse .table:first").parent().append(
-					'<ul style="list-style-type:none;padding:0;border-bottom: 2px solid #ddd;"><li><table class="table table-condensed" style="width:100%;">' +
-					'<thead style="font-size:12px;"><tr><th style="border-bottom:none;"><span class="glyphicon glyphicon-plus vnic-toggle" style="margin-right:2px;cursor:pointer;"></span>' +
+					'<ul style="list-style-type:none;padding:0;border-bottom: 2px solid #ddd;"><li><table class="table table-condensed" style="width:100%;"><thead style="font-size:12px;">' +
+					'<tr><th style="border-bottom:none;"><span class="glyphicon glyphicon-plus vnic-toggle" style="margin-right:2px;cursor:pointer;"></span>' +
 					t.Name + '</th><th style="border-bottom:none;font-weight:normal;">' +
 					t.Mac_Address + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
-					t.Desired_Order + '</th><th style="border-bottom:none;font-weight:normal;">' +
-					t.Actual_Order + '</th><th style="border-bottom:none;font-weight:normal;">' +
-					t.Fabric_Id + '</th><th style="border-bottom:none;font-weight:normal;">' +
-					t.Desired_Placement + '</th><th style="border-bottom:none;font-weight:normal;">' +
-					t.Actual_Placement + '</th><th class="visible-large" style="border-bottom:none;font-weight:normal;">' +
-					t.Adaptor_Profile + '</th><th class="visible-large" style="border-bottom:none;font-weight:normal;">' +
-					t.Control_Policy + '</th></tr></thead></table></li><li class="nic-toggle" style="display:none;"><div class="row"><div class="col-md-4" style="margin-bottom:4px;margin-left:8px;">' +
+					t.Desired_Order + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
+					t.Actual_Order + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
+					t.Fabric_Id + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
+					t.Desired_Placement + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
+					t.Actual_Placement + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
+					t.Adaptor_Profile + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
+					t.Control_Policy + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
+					t.Mtu + '</th></tr></thead></table></li><li class="nic-toggle" style="display:none;"><div class="row"><div class="col-md-4" style="margin-bottom:4px;margin-left:8px;">' +
 					'<table class="table table-condensed table-striped" style="font-size:11px; font-weight:normal;"><thead><tr><th style="border-bottom:none;font-weight:bold;">VLAN</th>' +
 					'<th style="border-bottom:none;font-weight:bold;">VLAN ID</th><th style="border-bottom:none;font-weight:bold;">Native VLAN</th></tr></thead><tbody>' +
 					e + "</tbody></div></div></li></ul>")
@@ -4404,9 +4407,10 @@
 						t.Actual_Order + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
 						t.Fabric_Id + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
 						t.Desired_Placement + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
-						t.Actual_Placement + '</th><th class="visible-large" style="border-bottom:none;font-weight:normal;">' +
-						t.Adaptor_Profile + '</th><th class="visible-large" style="border-bottom:none;font-weight:normal;">' +
-						t.Control_Policy + '</th></tr></thead></table></li><li class="nic-toggle" style="display:none;"><div class="row"><div class="col-md-4" style="margin-bottom:4px;margin-left:8px;">' +
+						t.Actual_Placement + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
+						t.Adaptor_Profile + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
+						t.Control_Policy + '</th><th style="min-width:50px;border-bottom:none;font-weight:normal;">' +
+						t.Mtu + '</th></tr></thead></table></li><li class="nic-toggle" style="display:none;"><div class="row"><div class="col-md-4" style="margin-bottom:4px;margin-left:8px;">' +
 						'<table class="table table-condensed table-striped" style="font-size:11px; font-weight:normal;"><thead><tr><th style="border-bottom:none;font-weight:bold;">VLAN</th>' +
 						'<th style="border-bottom:none;font-weight:bold;">VLAN ID</th><th style="border-bottom:none;font-weight:bold;">Native VLAN</th></tr></thead><tbody>' +
 						e + "</tbody></div></div></li></ul>")
