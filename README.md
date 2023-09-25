@@ -1,6 +1,6 @@
 # Cisco UCS Configuration Report
 ## Synopsis
-This script generates an HTML report showing all key configuration points on a Cisco UCS domain that is managed by UCS Manager (vs. Cisco Intersight).
+This script generates an HTML report showing all key configuration points on a Cisco UCS domain that is managed by UCS Manager. (**NOTE:** Intersight is not supported.)
 
 ## Acknowledgement
 This project was forked from code written by Brandon Beck (Cisco) and ported to [GitHub][4] from an original [Cisco Community Post][5].
